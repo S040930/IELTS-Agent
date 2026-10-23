@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PlanTask, PublicActivity, Section } from "./shared/domain.js";
 import { api, ApiError, setUnauthorizedHandler } from "./services/api.js";
+import { startPlanPolling } from "./services/plan-polling.js";
+import { goalFormReducer, type GoalForm } from "./services/goal-form.js";
 import { Icon, type IconName } from "./components/Icon.js";
 import { LoginView } from "./components/LoginView.js";
 import { ExamPreparation, type Preparation } from "./components/ExamPreparation.js";
@@ -48,10 +50,16 @@ export function App() {
   const [bootToken, setBootToken] = useState(0);
   const loaded = useRef(false);
   const performing = useRef(false);
-
-  const refresh = useCallback(async () => {
-    const value = await api.bootstrap();
+  const bootstrapEpoch = useRef(0);
+  const applyData = useCallback((value: BootstrapData) => {
+    bootstrapEpoch.current++;
     setData(value);
+  }, []);
+
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    const epoch = ++bootstrapEpoch.current;
+    const value = await api.bootstrap(signal);
+    if (epoch === bootstrapEpoch.current && !signal?.aborted && !performing.current) setData(value);
     return value;
   }, []);
 
@@ -69,6 +77,7 @@ export function App() {
     setUnauthorizedHandler(() => {
       void api.authSession().then((state) => {
         if (state.authenticated) return;
+        bootstrapEpoch.current++;
         loaded.current = false;
         setAuthenticated(false);
         setData(undefined);
@@ -123,19 +132,19 @@ export function App() {
   }, [authReady, authenticated, bootToken]);
 
   useEffect(() => {
-    if (!data || data.planProposal.status !== "generating") return;
-    let active = true;
-    const timer = window.setInterval(() => {
-      void api.planProposalStatus().then(({ proposal }) => {
-        if (active && (proposal.id !== data.planProposal.id || proposal.status !== "generating")) void refresh().catch((reason) => setError(errorMessage(reason)));
-      }).catch((reason) => { if (active) setError(errorMessage(reason)); });
-    }, 2500);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [data, refresh]);
+    if (!data || data.planProposal.status !== "generating" || data.planProposal.recoverable || busy) return;
+    return startPlanPolling({
+      proposalId: data.planProposal.id,
+      read: api.planProposalStatus,
+      settled: refresh,
+      error: (reason) => setError(errorMessage(reason)),
+    });
+  }, [data?.planProposal.id, data?.planProposal.status, data?.planProposal.recoverable, busy, refresh]);
 
   const login = useCallback(async (password: string) => { await api.login(password); setAuthenticated(true); }, []);
   const logout = useCallback(async () => {
     await api.logout();
+    bootstrapEpoch.current++;
     setAuthenticated(false); setData(undefined); setSession(undefined);
     setCoachOpen(false); setCoachLines([]); setCoachError(""); setFailedMessage(""); setError(""); setToast("");
     loaded.current = false;
@@ -150,11 +159,12 @@ export function App() {
   const perform = useCallback(async <T,>(action: () => Promise<T>, done?: (value: T) => void) => {
     if (performing.current) return undefined;
     performing.current = true;
+    bootstrapEpoch.current++;
     setBusy(true);
     setError("");
     try { const value = await action(); done?.(value); return value; }
     catch (reason) { setError(errorMessage(reason)); return undefined; }
-    finally { performing.current = false; setBusy(false); }
+    finally { bootstrapEpoch.current++; performing.current = false; setBusy(false); }
   }, []);
 
   const startActivity = useCallback(async (id: string, mode: ActivityMode = "practice", taskId?: string, reviewIds?: string[], questionIds?: string[]) => {
@@ -191,11 +201,11 @@ export function App() {
 
   const saveProfile = useCallback(async (profile: Omit<BootstrapData["profile"], "id" | "updatedAt">) => {
     const value = await perform(() => api.setProfile(profile), (updated) => {
-      setData(updated);
+      applyData(updated);
       setToast("目标已保存。");
     });
     return Boolean(value);
-  }, [perform]);
+  }, [perform, applyData]);
 
   const submit = useCallback(async (answers: Record<string, string>, questionTimeSeconds: Record<string, number>) => {
     if (!session) return false;
@@ -213,11 +223,11 @@ export function App() {
 
   const confirmCause = useCallback(async (attemptId: string, qid: string, tag: string, cause: string) => {
     const value = await perform(() => api.confirmCause(attemptId, qid, tag, cause), (updated) => {
-      setData(updated);
+      applyData(updated);
       setToast("错因已记下，明日计划会参考这条证据。");
     });
     return Boolean(value);
-  }, [perform]);
+  }, [perform, applyData]);
 
   const openAttempt = useCallback(async (attemptId: string) => {
     const value = await perform(() => api.resumeAttempt(attemptId));
@@ -226,22 +236,22 @@ export function App() {
     setSession({ activity: value.activity, draft: value.result, result: value.result });
     setQuestionId(value.activity.questions[0]?.id ?? "");
     setToast(""); setCoachOpen(false); setCoachLines([]); setPage("workspace");
-  }, [perform]);
+  }, [perform, applyData]);
 
   const confirmPlanProposal = useCallback(async (id: string) => {
     await perform(() => api.confirmPlanProposal(id), (updated) => {
-      setData(updated);
+      applyData(updated);
       setToast(updated.planProposal.status === "failed" ? updated.planProposal.error ?? "锁定任务后方案需要重新规划。" : "已按 AI 建议更新未锁定任务。");
     });
-  }, [perform]);
+  }, [perform, applyData]);
 
   const dismissPlanProposal = useCallback(async (id: string) => {
-    await perform(() => api.dismissPlanProposal(id), (updated) => { setData(updated); setToast("已保留当前学习计划。"); });
-  }, [perform]);
+    await perform(() => api.dismissPlanProposal(id), (updated) => { applyData(updated); setToast("已保留当前学习计划。"); });
+  }, [perform, applyData]);
 
   const retryPlanProposal = useCallback(async () => {
-    await perform(() => api.retryPlanProposal(), setData);
-  }, [perform]);
+    await perform(() => api.retryPlanProposal(), applyData);
+  }, [perform, applyData]);
 
   const loadHistory = useCallback(async () => {
     if (!session) return;
@@ -302,7 +312,7 @@ export function App() {
     </aside>
     <main className="page-main" key={page}>
       {railHidden && <div className="rail-toolbar"><button className="rail-expand" type="button" aria-label="展开侧边栏" title="展开侧边栏" onClick={toggleRail}><Icon name="menu" size={18} /></button></div>}
-      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={setPage} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), setData)} onSetup={() => setPage("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
+      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={setPage} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), applyData)} onSetup={() => setPage("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
       {(page === "reading" || page === "listening") && <LibraryPage section={page} data={data} onStart={(id) => void startActivity(id)} />}
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
@@ -313,7 +323,7 @@ export function App() {
     </main>
 
     {coachOpen && session && currentQuestion && <CoachDrawer activity={session.activity} question={currentQuestion} draft={session.draft} result={session.result} data={data} lines={coachLines} loading={coachLoading} error={coachError} failedMessage={failedMessage} onClose={() => setCoachOpen(false)} onSend={sendCoach} onRetry={() => failedMessage && void sendCoach(failedMessage)} />}
-    {error && <div className="toast-region" aria-live="polite"><div className="toast" role="alert"><Icon name="close" size={16} />{error}<button className="icon-button" aria-label="关闭提示" onClick={() => setError("")}><Icon name="close" size={15} /></button></div></div>}
+    {error && <div className="toast-region" aria-live="polite"><div className="toast" role="alert"><Icon name="close" size={16} />{error}<button className="button button-outline button-small" disabled={busy} onClick={() => void perform(() => api.bootstrap(), applyData)}>核对状态</button><button className="icon-button" aria-label="关闭提示" onClick={() => setError("")}><Icon name="close" size={15} /></button></div></div>}
     {!error && toast && <div className="toast-region" aria-live="polite"><div className="toast" role="status"><Icon name="sparkle" size={16} />{toast}</div></div>}
   </div>;
 }
@@ -359,7 +369,7 @@ function PlanProposalPanel({ proposal, currentPlan, today, dailyMinutes, skillLa
 }) {
   if (proposal.status === "idle" || proposal.status === "confirmed" || proposal.status === "dismissed") return null;
   return <section className={"plan-proposal " + (proposal.status === "failed" ? "plan-proposal-error" : "")} aria-live="polite">
-    {proposal.status === "generating" && <><strong><Icon name="sparkle" size={16} />AI 正在整理个性化计划</strong><p>你可以继续学习；完成后会在这里显示调整建议。</p></>}
+    {proposal.status === "generating" && <><strong><Icon name="sparkle" size={16} />{proposal.recoverable ? "计划生成可能已中断" : "AI 正在整理个性化计划"}</strong><p>{proposal.recoverable ? "等待时间较长，你可以手动恢复规划。已有计划仍然保留。" : "你可以继续学习；完成后会在这里显示调整建议。"}</p>{proposal.recoverable && <button className="button button-outline button-small" onClick={onRetry} disabled={busy}>恢复规划</button>}</>}
     {proposal.status === "failed" && <><strong><Icon name="close" size={16} />暂时无法生成新计划</strong><p>{proposal.error ?? "AI 规划暂不可用，请稍后重试。"} {hasPlan ? "当前已确认的计划仍然保留。" : "你可以先自主练习，之后再重试生成计划。"}</p><button className="button button-outline button-small" onClick={onRetry} disabled={busy}>重试规划</button></>}
     {proposal.status === "ready" && <>
       <strong><Icon name="sparkle" size={16} />AI 学习计划建议</strong>
@@ -453,7 +463,6 @@ function ProfilePage({ data, onAttempt, busy }: { data: BootstrapData; onAttempt
 }
 function DataStat({ label, value }: { label: string; value: string }) { return <div className="data-stat"><span>{label}</span><strong>{value}</strong></div>; }
 function confidenceText(value: "emerging" | "developing" | "established") { return value === "emerging" ? "观察中" : value === "developing" ? "有一些证据" : "多次观察"; }
-type GoalForm = { targetListening: number; targetReading: number; examDate: string; dailyMinutes: number };
 function ProfileForm({ value, busy, saved, error, onChange, onSubmit }: { value: GoalForm; busy: boolean; saved: boolean; error: string; onChange: (value: GoalForm) => void; onSubmit: (event: FormEvent) => void }) {
   const bands = Array.from({ length: 17 }, (_, index) => (index + 2) / 2);
   return <form className="profile-form-inner" onSubmit={onSubmit} aria-busy={busy}><fieldset className="profile-form-fields" disabled={busy}><div className="form-grid">
@@ -461,14 +470,15 @@ function ProfileForm({ value, busy, saved, error, onChange, onSubmit }: { value:
     <label className="field"><span>阅读目标分数</span><select className="input" value={value.targetReading} onChange={(event) => onChange({ ...value, targetReading: Number(event.target.value) })}>{bands.map((score) => <option key={score} value={score}>{score.toFixed(1)}</option>)}</select></label>
     <label className="field"><span>考试日期</span><input className="input" type="date" required value={value.examDate} onChange={(event) => onChange({ ...value, examDate: event.target.value })} /></label>
     <label className="field"><span>每日可投入时间</span><select className="input" value={value.dailyMinutes} onChange={(event) => onChange({ ...value, dailyMinutes: Number(event.target.value) })}>{[15, 20, 30, 45, 60, 90, 120, 180].map((minutes) => <option key={minutes} value={minutes}>{minutes} 分钟</option>)}</select></label>
-  </div></fieldset><div className="profile-form-actions"><p className={"profile-save-feedback" + (error ? " is-error" : "")} role={error ? "alert" : "status"}>{busy ? "正在保存目标，请稍候…" : error ? "保存未完成：" + error : saved ? "目标已保存。" : ""}</p><button type="submit" className="button button-primary" disabled={busy || saved}>{busy ? "保存中…" : saved ? "已保存" : "保存目标"} <Icon name={saved ? "circle-check" : "arrow"} size={15} /></button></div></form>;
+  </div></fieldset><div className="profile-form-actions"><p className={"profile-save-feedback" + (error ? " is-error" : "")} role={error ? "alert" : "status"}>{busy ? "正在保存目标，请稍候…" : error || (saved ? "目标已保存。" : "")}</p><button type="submit" className="button button-primary" disabled={busy || saved}>{busy ? "保存中…" : saved ? "已保存" : "保存目标"} <Icon name={saved ? "circle-check" : "arrow"} size={15} /></button></div></form>;
 }
 function SettingsPage({ data, busy, error, onSave, onLogout }: { data: BootstrapData; busy: boolean; error: string; onSave: (value: Omit<BootstrapData["profile"], "id" | "updatedAt">) => Promise<boolean>; onLogout: () => void }) {
-  const [form, setForm] = useState({ targetListening: data.profile.targetListening, targetReading: data.profile.targetReading, examDate: data.profile.examDate, dailyMinutes: data.profile.dailyMinutes });
-  const [saved, setSaved] = useState(false);
-  useEffect(() => setForm({ targetListening: data.profile.targetListening, targetReading: data.profile.targetReading, examDate: data.profile.examDate, dailyMinutes: data.profile.dailyMinutes }), [data.profile]);
+  const [{ value: form, saved }, updateForm] = useReducer(goalFormReducer, { value: data.profile, dirty: false, saved: false });
+  useEffect(() => {
+    updateForm({ type: "sync", value: data.profile });
+  }, [data.profile]);
   return <div className="page-content"><PageHeader title="设置" subtitle="调整备考目标和每天的学习节奏。" />
-    <section className="profile-form profile-edit"><div><h2>学习偏好</h2><p className="profile-note">这些设置会帮助我们安排适合你的练习时间。你可以随时调整。</p></div><ProfileForm value={form} busy={busy} saved={saved} error={error} onChange={(value) => { setForm(value); setSaved(false); }} onSubmit={(event) => { event.preventDefault(); if (!busy && !saved) void onSave({ ...form, setupComplete: true }).then(setSaved); }} /></section>
+    <section className="profile-form profile-edit"><div><h2>学习偏好</h2><p className="profile-note">这些设置会帮助我们安排适合你的练习时间。你可以随时调整。</p></div><ProfileForm value={form} busy={busy} saved={saved} error={error} onChange={(value) => updateForm({ type: "change", value })} onSubmit={(event) => { event.preventDefault(); if (!busy && !saved) void onSave({ ...form, setupComplete: true }).then((ok) => { if (ok) updateForm({ type: "saved", value: form }); }); }} /></section>
     <section className="profile-form profile-edit account-panel"><div><h2>演示账号</h2><p className="profile-note">所有使用演示密码登录的人会共用这一份学习记录。</p></div><button className="button button-soft" onClick={onLogout}>退出登录</button></section>
   </div>;
 }

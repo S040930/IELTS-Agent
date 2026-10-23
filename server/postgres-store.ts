@@ -6,6 +6,7 @@ import type {
 } from "../src/shared/domain.js";
 import type { LearningRepository } from "./store-contract.js";
 import { StoreError } from "./store-error.js";
+import { planReplacementError } from "../src/shared/plan-rules.js";
 import { examDeadline, type ExamTiming } from "../src/shared/domain.js";
 import { assertActivity } from "../src/shared/validation.js";
 
@@ -398,7 +399,7 @@ export class PostgresLearningStore implements LearningRepository {
   private async planRows(today: string): Promise<PlanTask[]> {
     const rows = await this.rows(`SELECT id,date,activity_id AS \"activityId\",plugin_id AS \"pluginId\",kind,title,description,minutes,reason,
       review_question_ids_json AS \"reviewQuestionIdsJson\",question_ids_json AS \"questionIdsJson\",focus_skill_tag AS \"focusSkillTag\",question_kind AS \"questionKind\",locked,status
-      FROM plan_tasks WHERE date = $1 ORDER BY kind DESC,id LIMIT 80`, [today]);
+      FROM plan_tasks WHERE date = $1 ORDER BY kind DESC,id`, [today]);
     return rows.map((row) => ({ id:String(row.id),date:String(row.date),activityId:String(row.activityId),pluginId:row.pluginId as Section,kind:row.kind as PlanTask["kind"],title:String(row.title),description:String(row.description),minutes:Number(row.minutes),reason:String(row.reason),reviewQuestionIds:parse(row.reviewQuestionIdsJson,[] as string[]),questionIds:parse(row.questionIdsJson,[] as string[]),focusSkillTag:row.focusSkillTag ? String(row.focusSkillTag) : undefined,questionKind:row.questionKind as PlanTask["questionKind"],locked:bool(row.locked),status:row.status as PlanTask["status"] }));
   }
   async plan(today = this.today()): Promise<PlanTask[]> { return this.planRows(today); }
@@ -462,12 +463,25 @@ export class PostgresLearningStore implements LearningRepository {
       const proposal = await this.one("SELECT tasks_json,plan_date AS \"planDate\" FROM plan_proposals WHERE singleton=1 AND id=$1 AND status='ready' FOR UPDATE", [id]);
       if (!proposal) { await this.client.query("ROLLBACK"); return false; }
       const tasks = parse(proposal.tasks_json, [] as PlanTask[]); const revision = now(); const planDate = String(proposal.planDate ?? this.today());
+      if (planDate !== this.today()) throw new StoreError("这份方案不属于今天，请重新加载查看今日计划。");
+      // Hold the profile and today's task rows through validation and replacement.
+      const profile = await this.one("SELECT daily_minutes FROM profile WHERE id='local-learner' FOR UPDATE");
+      if (!profile) throw new StoreError("学习档案尚未初始化。");
+      await this.client.query("SELECT id FROM plan_tasks WHERE date=$1 FOR UPDATE", [planDate]);
+      const fixed = (await this.plan(planDate)).filter((task) => task.locked || task.status === "done");
+      const error = planReplacementError(tasks, fixed, Number(profile.daily_minutes), planDate);
+      if (error) {
+        await this.failReadyPlanProposal(id, error);
+        await this.client.query("COMMIT");
+        return false;
+      }
       await this.client.query("UPDATE plan_tasks SET status='expired' WHERE date < $1 AND status='pending'", [planDate]);
       await this.client.query("DELETE FROM plan_tasks WHERE date = $1 AND locked=FALSE AND status='pending'", [planDate]);
       for (const task of tasks) await this.client.query(`INSERT INTO plan_tasks (id,date,activity_id,plugin_id,kind,title,description,minutes,reason,review_question_ids_json,question_ids_json,focus_skill_tag,question_kind,locked,status,revision)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,FALSE,'pending',$14)`, [task.id,task.date,task.activityId,task.pluginId,task.kind,task.title,task.description,task.minutes,task.reason,JSON.stringify(task.reviewQuestionIds ?? []),JSON.stringify(task.questionIds ?? []),task.focusSkillTag ?? null,task.questionKind ?? null,revision]);
       const update = await this.client.query("UPDATE plan_proposals SET status='confirmed',updated_at=$1 WHERE singleton=1 AND id=$2 AND status='ready'", [revision,id]);
-      await this.client.query("COMMIT"); return update.rowCount === 1;
+      if (update.rowCount !== 1) { await this.client.query("ROLLBACK"); return false; }
+      await this.client.query("COMMIT"); return true;
     } catch (error) { await this.client.query("ROLLBACK"); throw error; }
   }
   async setPlanTask(id: string, changes: { locked?: boolean; status?: "pending" | "done" }): Promise<PlanTask | undefined> {

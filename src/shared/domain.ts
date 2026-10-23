@@ -180,6 +180,7 @@ export interface PlanProposal {
   changes: PlanProposalChange[];
   error?: string;
   updatedAt?: string;
+  recoverable?: boolean;
 }
 
 export interface CoachMessage {

@@ -11,7 +11,7 @@ import type { LearningRepository } from "./store-contract.js";
 import { PluginRegistry, toPublicActivity } from "./plugins/registry.js";
 import { CoachService } from "./services/coach.js";
 import { AiClient } from "./services/ai-client.js";
-import { AiPlanner, diffPlan, fitsDailyBudget, type PlanningInput } from "./services/ai-planner.js";
+import { AiPlanner, diffPlan, type PlanningInput } from "./services/ai-planner.js";
 import { buildPlanningUnits, completeQuestionGroups, expandQuestionGroups } from "./services/planning-units.js";
 import { composeMock, isMockActivityId, listCompleteMocks, mockTiming } from "./services/mock-sets.js";
 import { assertActivity } from "../src/shared/validation.js";
@@ -172,20 +172,23 @@ export async function createApp(options: ServerOptions = {}): Promise<{
   const activities = (): Activity[] => [...builtinActivities, ...packagedActivities];
   const backgroundJobs = new Set<Promise<void>>();
 
-  async function planningInput(): Promise<PlanningInput> {
-    const [profile, currentPlan, evidence, reviews, today, attemptedQuestionIds, timingSamples, overdueTasks] = await Promise.all([
-      store.profile(), store.plan(), store.evidence(), store.reviews(), store.today(), store.attemptedQuestionIds(), store.questionTimingSamples(), store.overduePlanTasks(),
+  async function planningInput(profile: LearnerProfile, today: string): Promise<PlanningInput> {
+    const [currentPlan, evidence, reviews, attemptedQuestionIds, timingSamples, overdueTasks] = await Promise.all([
+      store.plan(today), store.evidence(), store.reviews(today), store.attemptedQuestionIds(), store.questionTimingSamples(), store.overduePlanTasks(today),
     ]);
     const availableActivities = activities().filter((activity) => activity.pluginId === "reading" || activity.pluginId === "listening");
     const dueReviews = reviews.filter((review) => (review.pluginId === "reading" || review.pluginId === "listening") && availableActivities.some((activity) => activity.id === review.activityId));
-    const units = buildPlanningUnits({ activities: availableActivities, attemptedQuestionIds, timingSamples, evidence, dueReviews });
+    const fixedTasks = currentPlan.filter((task) => task.locked || task.status === "done");
+    const fixedQuestions = new Set(fixedTasks.flatMap((task) => (task.questionIds ?? []).map((id) => task.activityId + ":" + id)));
+    const units = buildPlanningUnits({ activities: availableActivities, attemptedQuestionIds, timingSamples, evidence, dueReviews })
+      .filter((unit) => !unit.questionIds.some((id) => fixedQuestions.has(unit.activityId + ":" + id)));
     return {
       today,
       profile: { targetListening: profile.targetListening, targetReading: profile.targetReading, examDate: profile.examDate, dailyMinutes: profile.dailyMinutes },
       evidence,
       units,
       currentTasks: currentPlan.filter((task) => !task.locked && task.status === "pending"),
-      fixedTasks: currentPlan.filter((task) => task.locked || task.status === "done"),
+      fixedTasks,
       overdueTasks,
       requiredBaselineSections: [...new Set(units.filter((unit) => unit.taskKind === "diagnostic" && unit.novelty === "fresh").map((unit) => unit.pluginId))],
     };
@@ -208,9 +211,19 @@ export async function createApp(options: ServerOptions = {}): Promise<{
   }
 
   async function requestAiPlan(retryFailed = false, recoverStale = false): Promise<void> {
-    if (!(await store.profile()).setupComplete) return;
+    const profile = await store.profile();
+    if (!profile.setupComplete) return;
     const today = await store.today();
-    const input = await planningInput();
+    const proposal = await store.planProposal();
+    // Cheap read avoids historical aggregation for a day that is already settled.
+    // The repository still performs the final atomic check after building the input.
+    if (proposal.planDate === today && proposal.status !== "idle") {
+      const retry = retryFailed && proposal.status === "failed";
+      const recover = recoverStale && proposal.status === "generating" && proposal.updatedAt !== undefined
+        && Date.parse(proposal.updatedAt) < Date.now() - 120_000;
+      if (!retry && !recover) return;
+    }
+    const input = await planningInput(profile, today);
     const revision = planningRevision(input);
     const id = await store.beginPlanProposalIfIdle(revision, today, {
       retryFailed,
@@ -235,7 +248,8 @@ export async function createApp(options: ServerOptions = {}): Promise<{
   async function publicProposal(): Promise<PlanProposal> {
     const { id, planDate, status, tasks, changes, error, updatedAt } = await store.planProposal();
     const safeError = error?.includes("模型配置") ? "AI 暂时没有给出计划建议，请稍后重试。" : error;
-    return { ...(id ? { id } : {}), ...(planDate ? { planDate } : {}), status, ...(tasks ? { tasks } : {}), changes, ...(safeError ? { error: safeError } : {}), ...(updatedAt ? { updatedAt } : {}) };
+    const recoverable = status === "generating" && Boolean(updatedAt && Date.parse(updatedAt) < Date.now() - 120_000);
+    return { ...(id ? { id } : {}), ...(planDate ? { planDate } : {}), status, ...(tasks ? { tasks } : {}), changes, ...(safeError ? { error: safeError } : {}), ...(updatedAt ? { updatedAt } : {}), ...(recoverable ? { recoverable: true } : {}) };
   }
 
   async function resolveActivity(id: string): Promise<Activity | undefined> {
@@ -243,8 +257,8 @@ export async function createApp(options: ServerOptions = {}): Promise<{
     return activities().find((item) => item.id === id);
   }
 
-  async function makeBootstrap(): Promise<BootstrapData> {
-    await requestAiPlan();
+  async function makeBootstrap(retryFailed = false, recoverStale = false): Promise<BootstrapData> {
+    await requestAiPlan(retryFailed, recoverStale);
     const all = activities();
     const missing = coach.missingSettings();
     const skillLabels: Record<string, string> = {};
@@ -273,6 +287,14 @@ export async function createApp(options: ServerOptions = {}): Promise<{
       skillLabels,
       reviewQueue,
     });
+  }
+
+  async function sendMutationBootstrap(res: ServerResponse, operation: string): Promise<void> {
+    try { sendJson(res, 200, await makeBootstrap()); }
+    catch {
+      console.error("[api] mutation committed but bootstrap failed");
+      sendJson(res, 503, { error: operation + "已保存，但学习空间暂时刷新失败。请重新加载核对状态。", applied: true });
+    }
   }
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -354,13 +376,12 @@ export async function createApp(options: ServerOptions = {}): Promise<{
       if (!Number.isInteger(minutes) || minutes < 15 || minutes > 180) throw new HttpError("每日学习时间请设为 15–180 分钟。");
       if (!isSafeDate(examDate)) throw new HttpError("请选择有效的考试日期。");
       await store.saveProfile({ targetListening: listening, targetReading: reading, examDate, dailyMinutes: minutes });
-      sendJson(res, 200, await makeBootstrap());
+      await sendMutationBootstrap(res, "目标");
       return;
     }
 
     if (path === "/api/plan-proposals/retry" && method === "POST") {
-      await requestAiPlan(true);
-      sendJson(res, 200, await makeBootstrap());
+      sendJson(res, 200, await makeBootstrap(true, true));
       return;
     }
     const proposalAction = path.match(/^\/api\/plan-proposals\/([a-z0-9-]+)\/(confirm|dismiss)$/i);
@@ -368,18 +389,19 @@ export async function createApp(options: ServerOptions = {}): Promise<{
       const proposalId = proposalAction[1]!;
       const proposal = await store.planProposal();
       if (proposal.id !== proposalId) throw new HttpError("这份学习方案已更新，请查看最新建议。", 409);
+      if (proposal.planDate !== await store.today()) throw new HttpError("这份方案不属于今天，请重新加载查看今日计划。", 409);
       if (proposalAction[2] === "dismiss") {
-        if (!(await store.dismissPlanProposal(proposalId))) throw new HttpError("这份方案已经处理或已失效。", 409);
-      } else {
-        const tasks = await store.planProposalTasks(proposalId);
-        if (!tasks) throw new HttpError("这份方案已经处理或已失效。", 409);
-        const [plan, profile] = await Promise.all([store.plan(), store.profile()]);
-        const fixed = plan.filter((task) => task.locked || task.status === "done");
-        if (!fitsDailyBudget(tasks, fixed, profile.dailyMinutes)) {
-          await store.failReadyPlanProposal(proposalId, "锁定任务后，方案超出了每日学习时间。请重新规划。");
-        } else if (!(await store.applyPlanProposal(proposalId))) throw new HttpError("这份方案已经处理或已失效。", 409);
+        if (!(await store.dismissPlanProposal(proposalId))) {
+          const current = await store.planProposal();
+          if (current.id !== proposalId || current.status !== "dismissed") throw new HttpError("这份方案已经处理或已失效。", 409);
+        }
+      } else if (!(await store.applyPlanProposal(proposalId))) {
+        const current = await store.planProposal();
+        if (current.id !== proposalId || (current.status !== "confirmed" && current.status !== "failed")) {
+          throw new HttpError("这份方案已经处理或已失效。", 409);
+        }
       }
-      sendJson(res, 200, await makeBootstrap());
+      await sendMutationBootstrap(res, "方案处理结果");
       return;
     }
     const planMatch = path.match(/^\/api\/plans\/([^/]+)$/);
@@ -391,7 +413,7 @@ export async function createApp(options: ServerOptions = {}): Promise<{
       if (!Object.keys(update).length) throw new HttpError("请提供要更新的计划状态。");
       const task = await store.setPlanTask(decodeURIComponent(planMatch[1]!), update);
       if (!task) throw new HttpError("计划任务不存在。", 404);
-      sendJson(res, 200, await makeBootstrap());
+      await sendMutationBootstrap(res, "任务状态");
       return;
     }
 

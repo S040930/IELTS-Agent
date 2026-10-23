@@ -1,6 +1,7 @@
 import type { LearnerProfile, PlanProposalChange, PlanTask, Section, SkillEvidence } from "../../src/shared/domain.js";
 import type { AiClient } from "./ai-client.js";
 import type { PlanningUnit } from "./planning-units.js";
+import { planningPayload } from "./planning-payload.js";
 
 export interface PlanningInput {
   today: string;
@@ -49,7 +50,7 @@ export class AiPlanner {
         "reason 用简体中文，说明训练重点及安排依据；证据不足时明确说这是建立基线或待验证，不得臆测薄弱点。",
         "只输出严格 JSON：{\"tasks\":[{\"unitId\":\"候选 ID\",\"reason\":\"具体中文安排理由\"}]}。不得输出日期、题目列表、任务类型或分钟数；这些由服务端从候选恢复。",
       ].join("\n") },
-      { role: "user" as const, content: JSON.stringify(input) },
+      { role: "user" as const, content: JSON.stringify(planningPayload(input)) },
     ];
     const text = await this.ai.complete(messages, { temperature: 0.2, maxTokens: 6000, timeoutMs: 45_000, reasoningEffort: "low" });
     let parsed: unknown;
@@ -64,7 +65,7 @@ export function validatePlan(value: unknown, input: PlanningInput): PlanTask[] {
   if (!Array.isArray(rawTasks) || rawTasks.length === 0) throw new Error("AI 没有安排可执行的学习任务。");
   const units = new Map(input.units.map((unit) => [unit.id, unit]));
   const usedIds = new Set<string>();
-  const usedQuestions = new Set<string>();
+  const usedQuestions = new Set(input.fixedTasks.flatMap((task) => (task.questionIds ?? []).map((id) => task.activityId + ":" + id)));
   const usedDueReviews = new Set<string>();
   let minutes = input.fixedTasks.reduce((sum, task) => sum + task.minutes, 0);
   const tasks: PlanTask[] = [];
@@ -99,7 +100,7 @@ export function validatePlan(value: unknown, input: PlanningInput): PlanTask[] {
       locked: false, status: "pending",
     });
   }
-  const plannedSections = new Set(tasks.filter((task) => task.kind === "diagnostic").map((task) => task.pluginId));
+  const plannedSections = new Set([...tasks, ...input.fixedTasks].filter((task) => task.kind === "diagnostic").map((task) => task.pluginId));
   for (const section of input.requiredBaselineSections) {
     if (!plannedSections.has(section) && input.units.some((unit) => unit.pluginId === section && unit.taskKind === "diagnostic" && unit.novelty === "fresh")) {
       throw new Error("AI 返回的计划没有为证据不足的科目安排基线小题组。");
