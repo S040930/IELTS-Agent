@@ -1,7 +1,10 @@
 # API-01 实施与验证记录
 
 基准：S040930/IELTS-Agent，main，1b9ff4712e50b6809fbd194b0d94d171cc416140。
-状态：本地实现，尚未提交、推送或部署。依赖版本与数据库表结构未改变。
+状态：已提交到独立分支，依赖版本与数据库表结构未改变，尚未合并或部署。
+
+PR：https://github.com/S040930/IELTS-Agent/pull/1
+实现提交：https://github.com/YMYWX/IELTS-Agent/commit/93897b92fce35f69a6e0340979c20abeaea0cf4f
 
 ## 本次实现
 
@@ -13,7 +16,7 @@
 - 云端 bootstrap 的重复 ensurePlan 入口移除。规划入口先判断当天状态，已确认等终态不再构造候选和扫描规划历史。
 - 重试通过一次 makeBootstrap(true, true) 准备规划输入。
 - 候选时长估算一次建立全题库索引和题型／能力计时统计，候选间复用。
-- 规划服务 使用白名单 DTO，不发送自由错因文本、历史任务标题／描述／理由或题库标题；保留统计画像、目标、ID、题组、时长等元数据。
+- 规划服务使用白名单 DTO，不发送自由错因文本、历史任务标题／描述／理由或题库标题；保留统计画像、目标、ID、题组、时长等元数据。
 - 服务端候选排除与锁定／完成任务重叠的题目；规划输出和最终确认再次检查重复题目。
 - SQLite 与 Neon 在应用事务内检查日期、预算、保留任务、重复题目和空方案。失败只更新方案状态，不替换有效计划。
 - Neon 确认锁住 proposal、profile 和当天已有 task 行后再校验和替换；条件更新失败必须回滚。
@@ -43,7 +46,7 @@
 | 同日 confirmed bootstrap 的 planningInput | 先构造 1 次，再由仓储拒绝生成 | 0 次；本地聚合调用计数已断言 |
 | 单次候选构造中的全题库索引 | 每个候选重建 | 1 次并复用 |
 | 状态轮询 | 固定 setInterval，慢请求可重叠 | 完成后调度下一次，在途至多 1 次；计时器测试已断言 |
-| 同次有效生成资格的 规划请求 | 至多 1 次 | 保持至多 1 次；并发 bootstrap 测试已断言 |
+| 同次有效生成资格的规划请求 | 至多 1 次 | 保持至多 1 次；并发 bootstrap 测试已断言 |
 
 没有测量 p50 / p95、生产 SQL 数量或真实模型耗时，不声称任何延迟降低百分比。
 
@@ -70,16 +73,16 @@ node --experimental-transform-types --import ./tools/test-native-register.mjs --
 Neon 用例为记录型 Client，并非真实 Postgres 集成或并发验收。
 前端状态帮助函数已测，不等于 React 页面浏览器验收。
 
-## 尚未通过的检查
+## 远端验证与后续验收
 
-- npm run typecheck：退出 127，环境没有 tsc。
-- npm run build：退出 127，同样在 tsc 步骤停止；未执行到 Vite。
-- npm test 的 tsx 入口未运行，当前未安装依赖；以上 69 项通过可复现的原生 runner 运行。
+- 远端 npm ci、npm run typecheck、npm test 和 npm run build 均已通过。
+- 检查记录：https://github.com/YMYWX/IELTS-Agent/actions/runs/39954114457
+- 标准 npm test 与本地原生 runner 均已通过 69 项测试。
 - React 页面、双击交互、窄屏提示布局和真实响应乱序的浏览器验证：待验证。
 - 隔离 Neon 上的真实事务、死锁／并发以及 Vercel 生命周期：待验证。
 - 大题库与大量历史数据的性能基线：待验证。
 
-没有安装依赖，没有连接生产数据库，没有调用真实模型或项目生产 API。
+远端仅安装锁定依赖并执行检查，没有连接生产数据库或项目生产接口。
 
 ## 与 PERF-01 的协调
 
