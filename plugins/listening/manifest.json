@@ -1,0 +1,11 @@
+{
+  "id": "listening",
+  "name": "听力练习",
+  "version": "1.0.0",
+  "sdkVersion": 1,
+  "section": "listening",
+  "serverEntry": "./index.mjs",
+  "browserEntry": "./browser.mjs",
+  "capabilities": ["activity", "grader", "coach"]
+}
+

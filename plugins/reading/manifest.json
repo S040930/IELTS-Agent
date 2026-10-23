@@ -1,0 +1,11 @@
+{
+  "id": "reading",
+  "name": "学术阅读",
+  "version": "1.0.0",
+  "sdkVersion": 1,
+  "section": "reading",
+  "serverEntry": "./index.mjs",
+  "browserEntry": "./browser.mjs",
+  "capabilities": ["activity", "grader", "coach"]
+}
+

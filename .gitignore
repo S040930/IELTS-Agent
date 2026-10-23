@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.data/
+.npm-cache/
+.env
+.env.local
+.env.*.local
+coverage/
+*.log
+
+.vercel
+.env*

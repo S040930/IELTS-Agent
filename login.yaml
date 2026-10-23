@@ -1,0 +1,59 @@
+- generic [ref=e2]:
+  - complementary [ref=e7]:
+    - generic [ref=e8]: 暖学 IELTS
+    - navigation "主要导航" [ref=e14]:
+      - button "今日学习" [ref=e15] [cursor=pointer]
+      - button "听力练习" [ref=e21] [cursor=pointer]
+      - button "阅读练习" [ref=e26] [cursor=pointer]
+      - button "完整模考" [ref=e31] [cursor=pointer]
+      - button "错题复习" [ref=e36] [cursor=pointer]
+    - navigation "学习记录与设置" [ref=e45]:
+      - button "学习画像" [ref=e46] [cursor=pointer]
+      - button "设置" [ref=e51] [cursor=pointer]
+    - generic [ref=e57]: 学习记录已保护
+  - main [ref=e62]:
+    - generic [ref=e63]:
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - heading "今日学习" [level=1] [ref=e66]
+          - paragraph [ref=e67]: 今天先完成一小步，一项一项来。
+        - generic [ref=e68]: 10月14日星期三
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - generic [ref=e75]: 45 分钟 / 天
+          - generic [ref=e77]: 听力目标 7.0
+          - generic [ref=e79]: 阅读目标 7.0
+          - generic [ref=e81]: 0 道到期复习
+        - generic [ref=e82]: 今天确认后保持固定；今天的新证据用于明日规划。
+      - generic [ref=e83]:
+        - strong [ref=e84]: 暂时无法生成新计划
+        - paragraph [ref=e87]: AI 暂时没有给出计划建议，请稍后重试。 你可以先自主练习，之后再重试生成计划。
+        - button "重试规划" [ref=e88] [cursor=pointer]
+      - generic [ref=e89]:
+        - heading "今天的任务 0/0 已完成" [level=2] [ref=e90]:
+          - text: 今天的任务
+          - generic [ref=e91]: 0/0 已完成
+        - button "查看完整模考" [ref=e93] [cursor=pointer]
+      - generic [ref=e101]:
+        - strong [ref=e102]: 暂时没有已确认的计划
+        - paragraph [ref=e103]: 你仍可从题库自主选择练习；之后可以重试 AI 计划。
+        - button "开始阅读练习" [ref=e104] [cursor=pointer]
+      - generic [ref=e107]:
+        - generic [ref=e108]:
+          - heading "开始一项练习" [level=2] [ref=e109]
+          - paragraph [ref=e110]: 短练习的成绩只作为观察线索，不会换算成雅思分数。
+          - generic [ref=e111]:
+            - button "听力练习 听取日期、地点与细节" [ref=e112] [cursor=pointer]:
+              - generic [ref=e117]:
+                - strong [ref=e118]: 听力练习
+                - generic [ref=e119]: 听取日期、地点与细节
+            - button "阅读练习 定位依据与同义改写" [ref=e122] [cursor=pointer]:
+              - generic [ref=e127]:
+                - strong [ref=e128]: 阅读练习
+                - generic [ref=e129]: 定位依据与同义改写
+        - generic [ref=e132]:
+          - heading "最近的学习记录" [level=2] [ref=e133]
+          - paragraph [ref=e134]: 分科保存原始正确题数，不根据少量题目猜测 Band 分数。
+          - generic [ref=e135]:
+            - heading "完成第一次练习后，这里会留下记录" [level=2] [ref=e139]
+            - paragraph [ref=e140]: 画像会逐步累积新题表现，不只看一次分数。累计 0/0。

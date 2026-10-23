@@ -1,0 +1,38 @@
+{
+  "name": "ielts-self-study-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "concurrently --kill-others -n server,web -c yellow,cyan \"tsx watch server/start.ts\" \"vite\"",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/start.ts --production",
+    "test": "node --import tsx --test test/*.test.ts",
+    "content:fix-margaret": "node --import tsx tools/fix-margaret-numbering.ts",
+    "content:fix-option-labels": "node --import tsx tools/fix-reading-option-labels.ts",
+    "content:tag-parts": "node --import tsx tools/tag-parts.ts",
+    "content:export": "node --import tsx tools/export-demo-content.ts",
+    "content:upload-cloud": "node --import tsx tools/upload-cloud-content.ts",
+    "cloud:migrate": "node --import tsx tools/migrate-cloud.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "1.2.0",
+    "@vercel/blob": "2.8.1",
+    "@vercel/functions": "3.9.11",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "concurrently": "9.2.5",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}
