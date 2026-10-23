@@ -16,6 +16,7 @@ import type {
   SkillEvidence,
 } from "../src/shared/domain.js";
 import { StoreError } from "./store-error.js";
+import { planReplacementError } from "../src/shared/plan-rules.js";
 import { examDeadline, type ExamTiming } from "../src/shared/domain.js";
 
 const utcNow = () => new Date().toISOString();
@@ -472,7 +473,7 @@ export class LearningStore {
   plan(today = this.today()): PlanTask[] {
     return this.planRows(`SELECT id,date,activity_id AS activityId,plugin_id AS pluginId,kind,title,description,minutes,reason,
       review_question_ids_json AS reviewQuestionIdsJson,question_ids_json AS questionIdsJson,focus_skill_tag AS focusSkillTag,question_kind AS questionKind,locked,status
-      FROM plan_tasks WHERE date=? ORDER BY kind DESC,id LIMIT 80`, today);
+      FROM plan_tasks WHERE date=? ORDER BY kind DESC,id`, today);
   }
 
   overduePlanTasks(today = this.today()): PlanTask[] {
@@ -574,6 +575,14 @@ export class LearningStore {
       if (!proposal) { this.database.exec("ROLLBACK;"); return false; }
       const tasks = parse(proposal.tasks_json, [] as PlanTask[]);
       const planDate = proposal.planDate || this.today();
+      if (planDate !== this.today()) throw new StoreError("这份方案不属于今天，请重新加载查看今日计划。");
+      const fixed = this.plan(planDate).filter((task) => task.locked || task.status === "done");
+      const error = planReplacementError(tasks, fixed, this.profile().dailyMinutes, planDate);
+      if (error) {
+        this.failReadyPlanProposal(id, error);
+        this.database.exec("COMMIT;");
+        return false;
+      }
       this.database.prepare("UPDATE plan_tasks SET status='expired' WHERE date<? AND status='pending'").run(planDate);
       this.database.prepare("DELETE FROM plan_tasks WHERE date=? AND locked=0 AND status='pending'").run(planDate);
       const insert = this.database.prepare(`INSERT INTO plan_tasks

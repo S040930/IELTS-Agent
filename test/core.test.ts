@@ -728,14 +728,14 @@ describe("hardening regressions", () => {
     const timestamp = originalNow() + 3_600_000;
     try {
       globalThis.fetch = async () => new Response("{}", { headers: { "x-server-time": String(timestamp) } });
-      await api.bootstrap();
+      await api.authSession();
       assert.ok(Math.abs(api.serverNow() - timestamp) < 1000);
       Date.now = () => originalNow() - 86_400_000;
       assert.ok(Math.abs(api.serverNow() - timestamp) < 1000);
     } finally {
       Date.now = originalNow;
       globalThis.fetch = async () => new Response("{}", { headers: { "x-server-time": String(originalNow()) } });
-      await api.bootstrap();
+      await api.authSession();
       globalThis.fetch = originalFetch;
     }
   });

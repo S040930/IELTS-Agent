@@ -97,14 +97,25 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
 
-function estimatedMinutes(activity: Activity, allActivities: Activity[], questionIds: string[], kind: QuestionKind, tag: string, timings: QuestionTimingSample[]): number {
-  const questionById = new Map(allActivities.flatMap((item) => item.questions).map((question) => [question.id, question]));
-  const samples = timings.filter((sample) => {
+function timingEstimates(activities: Activity[], timings: QuestionTimingSample[]): Map<string, number> {
+  const questionById = new Map(activities.flatMap((item) => item.questions).map((question) => [question.id, question]));
+  const samples = new Map<string, number[]>();
+  for (const sample of timings) {
     const question = questionById.get(sample.questionId);
-    return question?.kind === kind && question.skillTags.includes(tag);
-  });
-  // Until five observations exist for this candidate, scale the source material's expected duration.
-  const reference = samples.length >= 5 ? median(samples.map((sample) => sample.seconds)) * questionIds.length / 60
+    if (!question) continue;
+    for (const tag of new Set(question.skillTags)) {
+      const key = question.kind + ":" + tag;
+      const values = samples.get(key) ?? [];
+      values.push(sample.seconds);
+      samples.set(key, values);
+    }
+  }
+  return new Map([...samples].filter(([, values]) => values.length >= 5).map(([key, values]) => [key, median(values)]));
+}
+
+function estimatedMinutes(activity: Activity, questionIds: string[], kind: QuestionKind, tag: string, estimates: Map<string, number>): number {
+  const seconds = estimates.get(kind + ":" + tag);
+  const reference = seconds !== undefined ? seconds * questionIds.length / 60
     : activity.minutes * questionIds.length / Math.max(1, activity.questions.length);
   return Math.max(1, Math.ceil(reference));
 }
@@ -127,6 +138,7 @@ export function buildPlanningUnits(input: {
   maxQuestions?: number;
 }): PlanningUnit[] {
   const attempted = new Set(input.attemptedQuestionIds);
+  const estimates = timingEstimates(input.activities, input.timingSamples);
   const dueByActivity = new Map<string, Set<string>>();
   for (const review of input.dueReviews) {
     const ids = dueByActivity.get(review.activityId) ?? new Set<string>();
@@ -180,7 +192,7 @@ export function buildPlanningUnits(input: {
           focusSkillTag,
           skillTags,
           questionCount: questionIds.length,
-          minutes: estimatedMinutes(activity, input.activities, questionIds, questionKind, focusSkillTag, input.timingSamples),
+          minutes: estimatedMinutes(activity, questionIds, questionKind, focusSkillTag, estimates),
           difficulty: activity.difficulty,
           novelty: novelty as PlanningUnit["novelty"],
           evidenceStatus: (skillEvidence?.independentSamples ?? 0) < 3 ? "insufficient" : "observed",
