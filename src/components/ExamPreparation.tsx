@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ActivityMode, PublicActivity } from "../shared/domain.js";
+import type { ActivityMode, ActivitySummary } from "../shared/domain.js";
 
 export type Preparation = {
-  activity: PublicActivity;
+  activity: ActivitySummary;
   mode: ActivityMode;
   taskId?: string;
   reviewIds?: string[];
@@ -48,7 +48,7 @@ export function ExamPreparation({ preparation, busy, onBack, onStart }: {
     return () => { cancelled = true; cleanups.forEach((cleanup) => cleanup()); };
   }, [sources, preflightVersion]);
   useEffect(() => { const audio = sample.current; return () => audio?.pause(); }, []);
-  const count = preparation.questionIds?.length ?? preparation.reviewIds?.length ?? activity.questions.length;
+  const count = preparation.questionIds?.length ?? preparation.reviewIds?.length ?? activity.questionCount;
   const ready = durations !== null && (!mock || !listening || soundChecked);
   const minutes = listening && durations ? Math.ceil((durations.reduce((sum, value) => sum + value, 0) + (mock ? 120 : 0)) / 60) : mock ? 60 : activity.minutes;
 
@@ -71,7 +71,8 @@ export function ExamPreparation({ preparation, busy, onBack, onStart }: {
         </ul>
       </section>
       {listening && <section className="exam-sound-check"><h2>Sound check</h2><p>Put on your headphones. Play the sample and adjust the volume.</p>
-        <audio ref={sample} src="/assets/garden-workshop.wav" preload="metadata" onPlaying={() => setPlayedSample(true)} />
+        {/* preload must be applied before src, otherwise the browser starts fetching on mount. */}
+        <audio ref={sample} preload="none" src="/assets/garden-workshop.wav" onPlaying={() => setPlayedSample(true)} />
         <div className="exam-sound-controls"><button type="button" onClick={() => { setError(""); void sample.current?.play().catch(() => setError("The sound sample could not be played. Please try again.")); }}>Play Sound</button><label>Volume <input type="range" aria-label="Sound check volume" min="0" max="1" step="0.05" defaultValue="1" onChange={(event) => { if (sample.current) sample.current.volume = Number(event.target.value); }} /></label></div>
         <label className="exam-sound-confirm"><input type="checkbox" checked={soundChecked} disabled={!playedSample} onChange={(event) => setSoundChecked(event.target.checked)} />I can hear the sound clearly{!mock && " (optional for practice)"}</label>
       </section>}

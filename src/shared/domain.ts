@@ -50,6 +50,42 @@ export interface PublicActivity extends Omit<Activity, "questions" | "transcript
   transcript?: never;
 }
 
+/**
+ * 练习目录摘要：bootstrap 只下发列表与考前准备所需的字段。
+ * 文章正文、题目与解析由开始练习/恢复练习接口按需返回，避免首屏携带整个题库。
+ */
+export interface ActivitySummary {
+  id: string;
+  pluginId: Section;
+  title: string;
+  description: string;
+  minutes: number;
+  difficulty: 1 | 2 | 3;
+  part?: 1 | 2 | 3 | 4;
+  mockId?: string;
+  audioUrl?: string;
+  audioSections?: Array<{ title: string; audioUrl: string }>;
+  sample: boolean;
+  questionCount: number;
+}
+
+export function activitySummary(activity: Activity | PublicActivity): ActivitySummary {
+  return {
+    id: activity.id,
+    pluginId: activity.pluginId,
+    title: activity.title,
+    description: activity.description,
+    minutes: activity.minutes,
+    difficulty: activity.difficulty,
+    ...(activity.part !== undefined ? { part: activity.part } : {}),
+    ...(activity.mockId !== undefined ? { mockId: activity.mockId } : {}),
+    ...(activity.audioUrl !== undefined ? { audioUrl: activity.audioUrl } : {}),
+    ...(activity.audioSections !== undefined ? { audioSections: activity.audioSections.map(({ title, audioUrl }) => ({ title, audioUrl })) } : {}),
+    sample: activity.sample,
+    questionCount: activity.questions.length,
+  };
+}
+
 export interface ExamPart {
   part: number;
   sourceActivityId: string;
@@ -220,7 +256,7 @@ export interface MockAvailability {
 
 export interface BootstrapData {
   profile: LearnerProfile;
-  activities: PublicActivity[];
+  activities: ActivitySummary[];
   plugins: BrowserPlugin[];
   plan: PlanTask[];
   planProposal: PlanProposal;

@@ -25,6 +25,7 @@
 - 每次完成考前准备并正式开始练习才创建新 attempt；只有本地活动指针可恢复原 attempt。明确退出会将服务端草稿标为 abandoned，避免旧答案和用时复用；意外中断仍可恢复原 attempt。
 - 练习与模考共用全屏机考工作区；正式开始前显示说明和听力试音。模考准备不创建 attempt，SQLite 与 Neon 的 `mock_papers` 保存完整试卷快照；开考时固定时长，恢复使用同一卷和截止时间。听力模考按绝对时间顺序单次播放，录音结束后统一检查 2 分钟；练习保留回放与 AI 导师。
 - 模考倒计时与音频时间线共用服务端校准时间，避免本机时钟偏差增加考试时间。线上完整交卷验收使用独立临时 Neon 数据库与预览部署。
+- `/api/bootstrap` 只下发练习目录摘要（`ActivitySummary`：标题、题数、难度、音频地址等），文章正文与题目由开始/恢复练习、模考准备与开考接口按需返回，避免首屏携带整个题库。服务端当天已有计划方案时不再重算规划输入。
 
 ## 文档索引
 
@@ -32,6 +33,7 @@
 - [README.md](README.md)：本机安装、启动与项目入口。
 - [docs/deploy-vercel.md](docs/deploy-vercel.md)：Vercel、Neon、Blob、密钥与云端题库初始化。
 - [docs/deployment-acceptance-2026-10-23.md](docs/deployment-acceptance-2026-10-23.md)：本轮线上部署、隔离验收、AI 模型恢复和数据清理记录。
+- [docs/perf-01-baseline.md](docs/perf-01-baseline.md)：PERF-01 核心交互基线、瓶颈、修复与复测数据。
 - [docs/plugins.md](docs/plugins.md)：插件 SDK 和生命周期。
 - [docs/content-package.md](docs/content-package.md)：本机内容包结构和组员安装。
 - [docs/learning-system.md](docs/learning-system.md)：画像、计划、复习和本机学习数据。

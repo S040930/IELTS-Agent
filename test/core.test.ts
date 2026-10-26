@@ -554,6 +554,29 @@ describe("learning records and plugin host", () => {
 });
 
 describe("hardening regressions", () => {
+  it("keeps question and passage bodies out of the bootstrap catalog", async () => {
+    const activity = readingPart(1, 3);
+    activity.id = "catalog-light";
+    activity.passage = { title: "Passage", text: "UNIQUE-PASSAGE-BODY" };
+    activity.questions[0]!.prompt = "UNIQUE-QUESTION-PROMPT";
+    const app = await createApp({ dataDirectory: join(directory, "catalog"), pluginDirectory: join(process.cwd(), "plugins"), activities: [activity], deferStartupPlanning: true });
+    try {
+      const dispatch = dispatcher(app);
+      const boot = await dispatch("GET", "/api/bootstrap");
+      assert.equal(boot.status, 200);
+      const body = JSON.stringify(boot.json);
+      assert.equal(body.includes("UNIQUE-PASSAGE-BODY"), false);
+      assert.equal(body.includes("UNIQUE-QUESTION-PROMPT"), false);
+      const summary = (boot.json.activities as Array<Record<string, unknown>>).find((item) => item.id === "catalog-light");
+      assert.equal(summary?.questionCount, 3);
+      assert.equal("questions" in (summary ?? {}), false);
+      const started = await dispatch("POST", "/api/attempts", { activityId: activity.id, mode: "practice" });
+      assert.equal(started.status, 201);
+      assert.equal(JSON.stringify(started.json).includes("UNIQUE-QUESTION-PROMPT"), true);
+      assert.equal(JSON.stringify(started.json).includes("UNIQUE-PASSAGE-BODY"), true);
+    } finally { await app.close(); }
+  });
+
   it("filters invalid and duplicate activities from the cloud catalog", async () => {
     const activity = readingPart(1, 1);
     activity.id = "cloud-valid";

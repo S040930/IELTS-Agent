@@ -5,7 +5,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 
 import { pipeline } from "node:stream/promises";
 import { realpath } from "node:fs/promises";
 import { basename, extname, join, resolve, sep } from "node:path";
-import type { Activity, ActivityMode, AnswerDraft, BootstrapData, LearnerProfile, PlanProposal, PlanTask, Question } from "../src/shared/domain.js";
+import { activitySummary, type Activity, type ActivityMode, type AnswerDraft, type BootstrapData, type LearnerProfile, type PlanProposal, type PlanTask, type Question } from "../src/shared/domain.js";
 import { LearningStore } from "./db.js";
 import type { LearningRepository } from "./store-contract.js";
 import { PluginRegistry, toPublicActivity } from "./plugins/registry.js";
@@ -210,6 +210,14 @@ export async function createApp(options: ServerOptions = {}): Promise<{
   async function requestAiPlan(retryFailed = false, recoverStale = false): Promise<void> {
     if (!(await store.profile()).setupComplete) return;
     const today = await store.today();
+    // Cheap guard before the expensive planning input: mirror beginPlanProposalIfIdle's
+    // same-day short circuit so ordinary bootstraps never rebuild all planning units.
+    const existing = await store.planProposal();
+    if (existing.planDate === today) {
+      const stale = existing.status === "generating" && recoverStale && existing.updatedAt !== undefined && existing.updatedAt < new Date(Date.now() - 120_000).toISOString();
+      const retry = existing.status === "failed" && retryFailed;
+      if (!stale && !retry) return;
+    }
     const input = await planningInput();
     const revision = planningRevision(input);
     const id = await store.beginPlanProposalIfIdle(revision, today, {
@@ -261,7 +269,7 @@ export async function createApp(options: ServerOptions = {}): Promise<{
     });
     return publicBootstrap({
       profile,
-      activities: all.filter((activity) => !activity.id.startsWith("fullmock:")).map(toPublicActivity),
+      activities: all.filter((activity) => !activity.id.startsWith("fullmock:")).map(activitySummary),
       plugins: registry.manifestsForBrowser(),
       plan,
       planProposal,
