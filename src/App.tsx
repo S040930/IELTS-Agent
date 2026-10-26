@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PlanTask, PublicActivity, Section } from "./shared/domain.js";
+import { activitySummary, type ActivityMode, type ActivitySummary, type AnswerDraft, type AttemptResult, type BootstrapData, type CoachMessage, type PlanTask, type PublicActivity, type Section } from "./shared/domain.js";
 import { api, ApiError, setUnauthorizedHandler } from "./services/api.js";
 import { Icon, type IconName } from "./components/Icon.js";
 import { LoginView } from "./components/LoginView.js";
@@ -43,11 +43,14 @@ export function App() {
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingAttempt, setPendingAttempt] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [bootToken, setBootToken] = useState(0);
   const loaded = useRef(false);
   const performing = useRef(false);
+  const coachSending = useRef(false);
 
   const refresh = useCallback(async () => {
     const value = await api.bootstrap();
@@ -77,6 +80,8 @@ export function App() {
         setCoachLines([]);
         setCoachError("");
         setFailedMessage("");
+        setPendingAttempt("");
+        setSubmitting(false);
         setError("");
         setToast("");
       }).catch(() => undefined);
@@ -89,31 +94,30 @@ export function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const boot = await api.bootstrap();
+        // Restore an interrupted attempt while the catalog loads instead of after it.
+        const saved = localStorage.getItem("ielts-active-attempt");
+        const resume = saved
+          ? api.resumeAttempt(saved).then((value) => ({ value }), (reason: unknown) => ({ reason }))
+          : Promise.resolve(undefined);
+        const [boot, resumed] = await Promise.all([api.bootstrap(), resume]);
         if (cancelled) return;
         setData(boot);
-        const saved = localStorage.getItem("ielts-active-attempt");
-        if (saved) {
-          try {
-            const resumed = await api.resumeAttempt(saved);
-            if (cancelled) return;
-            if (!resumed.activity || (!resumed.draft && !resumed.result)) {
-              localStorage.removeItem("ielts-active-attempt");
-            } else {
-              const result = resumed.result;
-              const draft = resumed.draft ?? {
-                attemptId: saved, activityId: resumed.activity.id, mode: result!.mode, answers: result!.answers,
-                saveRevision: result!.saveRevision ?? 0, hintedQuestionIds: result!.hintedQuestionIds, startedAt: result!.startedAt, updatedAt: result!.updatedAt,
-              };
-              setSession({ activity: resumed.activity, draft, result });
-              setQuestionId(resumed.activity.questions[0]?.id ?? "");
-              setPage("workspace");
-            }
-          } catch (reason) {
-            if (cancelled) return;
-            if (reason instanceof ApiError && (reason.status === 404 || reason.status === 410)) localStorage.removeItem("ielts-active-attempt");
-            else if (reason instanceof ApiError && reason.status === 401) return;
-            else setError("练习草稿暂时无法恢复：" + errorMessage(reason));
+        if (resumed && "reason" in resumed) {
+          if (resumed.reason instanceof ApiError && (resumed.reason.status === 404 || resumed.reason.status === 410)) localStorage.removeItem("ielts-active-attempt");
+          else if (resumed.reason instanceof ApiError && resumed.reason.status === 401) return;
+          else setError("练习草稿暂时无法恢复：" + errorMessage(resumed.reason));
+        } else if (resumed?.value) {
+          const { activity, draft, result } = resumed.value;
+          if (!activity || (!draft && !result)) {
+            localStorage.removeItem("ielts-active-attempt");
+          } else {
+            const restored = draft ?? {
+              attemptId: saved!, activityId: activity.id, mode: result!.mode, answers: result!.answers,
+              saveRevision: result!.saveRevision ?? 0, hintedQuestionIds: result!.hintedQuestionIds, startedAt: result!.startedAt, updatedAt: result!.updatedAt,
+            };
+            setSession({ activity, draft: restored, result });
+            setQuestionId(activity.questions[0]?.id ?? "");
+            setPage("workspace");
           }
         }
         if (!cancelled) loaded.current = true;
@@ -137,7 +141,7 @@ export function App() {
   const logout = useCallback(async () => {
     await api.logout();
     setAuthenticated(false); setData(undefined); setSession(undefined);
-    setCoachOpen(false); setCoachLines([]); setCoachError(""); setFailedMessage(""); setError(""); setToast("");
+    setCoachOpen(false); setCoachLines([]); setCoachError(""); setFailedMessage(""); setPendingAttempt(""); setSubmitting(false); setError(""); setToast("");
     loaded.current = false;
   }, []);
 
@@ -157,21 +161,30 @@ export function App() {
     finally { performing.current = false; setBusy(false); }
   }, []);
 
+  const prefetchPlugin = useCallback((section: Section) => {
+    const browserUrl = data?.plugins.find((plugin) => plugin.section === section)?.browserUrl;
+    if (!browserUrl) return;
+    // Warm the practice module while the preparation screen is on screen.
+    void import(/* @vite-ignore */ browserUrl).catch(() => undefined);
+  }, [data?.plugins]);
+
   const startActivity = useCallback(async (id: string, mode: ActivityMode = "practice", taskId?: string, reviewIds?: string[], questionIds?: string[]) => {
     const activity = data?.activities.find((item) => item.id === id);
     if (!activity) { setError("找不到练习材料，请刷新题库后重试。"); return; }
     setWorkspaceReturnPage(page === "workspace" ? "home" : page);
     setToast(""); setPreparation({ activity, mode, taskId, reviewIds, questionIds });
     setCoachOpen(false); setPage("preparation");
-  }, [data, page]);
+    prefetchPlugin(activity.pluginId);
+  }, [data, page, prefetchPlugin]);
 
   const startMock = useCallback(async (section: "reading" | "listening") => {
     const value = await perform(() => api.prepareMock(section));
     if (!value) return;
     setWorkspaceReturnPage(page === "workspace" ? "mock" : page);
-    setToast(""); setPreparation({ activity: value.activity, mode: "mock" });
+    setToast(""); setPreparation({ activity: activitySummary(value.activity), mode: "mock" });
     setCoachOpen(false); setPage("preparation");
-  }, [page, perform]);
+    prefetchPlugin(value.activity.pluginId);
+  }, [page, perform, prefetchPlugin]);
 
   const launchPreparation = useCallback(async (durations: number[]) => {
     if (!preparation) return false;
@@ -200,15 +213,18 @@ export function App() {
   const submit = useCallback(async (answers: Record<string, string>, questionTimeSeconds: Record<string, number>) => {
     if (!session) return false;
     const attemptId = session.draft.attemptId;
-    setBusy(true); setError("");
+    setBusy(true); setSubmitting(true); setError("");
     try {
       const result = (await api.submit(attemptId, answers, questionTimeSeconds)).result;
       localStorage.removeItem("ielts-active-attempt");
       setSession((current) => current ? { ...current, draft: { ...current.draft, answers, questionTimeSeconds }, result } : current);
-      setCoachOpen(false); await refresh(); setToast("练习已保存：" + result.score + " / " + result.total + " 题答对。");
+      setCoachOpen(false); setToast("练习已保存：" + result.score + " / " + result.total + " 题答对。");
+      // The attempt is already persisted; refresh the shelf in the background so the
+      // submit state clears as soon as the result arrives.
+      void refresh().catch((reason) => setError(errorMessage(reason)));
       return true;
     } catch (reason) { setError(errorMessage(reason)); return false; }
-    finally { setBusy(false); }
+    finally { setBusy(false); setSubmitting(false); }
   }, [refresh, session]);
 
   const confirmCause = useCallback(async (attemptId: string, qid: string, tag: string, cause: string) => {
@@ -220,7 +236,9 @@ export function App() {
   }, [perform]);
 
   const openAttempt = useCallback(async (attemptId: string) => {
+    setPendingAttempt(attemptId);
     const value = await perform(() => api.resumeAttempt(attemptId));
+    setPendingAttempt("");
     if (!value?.result || !value.activity) return;
     setWorkspaceReturnPage("profile");
     setSession({ activity: value.activity, draft: value.result, result: value.result });
@@ -255,14 +273,16 @@ export function App() {
   }, [session]);
 
   const sendCoach = useCallback(async (message: string) => {
-    if (!session || !questionId || !data?.aiConfigured) return;
+    // A ref guard stops a double Enter/click before the loading state has rendered.
+    if (coachSending.current || !session || !questionId || !data?.aiConfigured) return;
+    coachSending.current = true;
     setCoachLoading(true); setCoachError(""); setFailedMessage("");
     setCoachLines((current) => [...current, { id: crypto.randomUUID(), role: "user", text: message }]);
     try {
       const value = await api.askCoach(coachKey(session.draft.attemptId), session.activity.id, questionId, session.draft.attemptId, message);
       setCoachLines((current) => [...current, { id: value.message.id, role: "assistant", text: value.message.text }]);
     } catch (reason) { setCoachError(errorMessage(reason)); setFailedMessage(message); }
-    finally { setCoachLoading(false); }
+    finally { coachSending.current = false; setCoachLoading(false); }
   }, [data?.aiConfigured, questionId, session]);
 
   const goHome = useCallback(() => {
@@ -306,10 +326,10 @@ export function App() {
       {(page === "reading" || page === "listening") && <LibraryPage section={page} data={data} onStart={(id) => void startActivity(id)} />}
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
-      {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} />}
+      {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} pendingAttempt={pendingAttempt} />}
       {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} />}
       {page === "preparation" && preparation && <ExamPreparation key={preparation.activity.id} preparation={preparation} busy={busy} onBack={() => { setPreparation(undefined); setPage(workspaceReturnPage); setError(""); }} onStart={launchPreparation} />}
-      {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} />}
+      {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} />}
     </main>
 
     {coachOpen && session && currentQuestion && <CoachDrawer activity={session.activity} question={currentQuestion} draft={session.draft} result={session.result} data={data} lines={coachLines} loading={coachLoading} error={coachError} failedMessage={failedMessage} onClose={() => setCoachOpen(false)} onSend={sendCoach} onRetry={() => failedMessage && void sendCoach(failedMessage)} />}
@@ -366,7 +386,7 @@ function PlanProposalPanel({ proposal, currentPlan, today, dailyMinutes, skillLa
       <p>先查看今天的小题组、预计用时和训练重点。确认后今天的计划固定；本日新产生的学习证据会用于明日规划。</p>
       <ProposalSchedule proposal={proposal} currentPlan={currentPlan} today={today} dailyMinutes={dailyMinutes} skillLabels={skillLabels} />
       {proposal.changes.length > 0 && <p className="plan-change-summary">相较当前计划：新增 {proposal.changes.filter((item) => item.kind === "added").length} 项 · 调整 {proposal.changes.filter((item) => item.kind === "updated").length} 项 · 移除 {proposal.changes.filter((item) => item.kind === "removed").length} 项</p>}
-      <div className="plan-proposal-actions"><button className="button button-primary button-small" onClick={() => proposal.id && onConfirm(proposal.id)} disabled={busy || !proposal.id}>{proposal.changes.length ? "确认并应用今天的计划" : "确认今天的计划"}</button><button className="button button-outline button-small" onClick={() => proposal.id && onDismiss(proposal.id)} disabled={busy || !proposal.id}>暂不应用</button></div>
+      <div className="plan-proposal-actions"><button className="button button-primary button-small" onClick={() => proposal.id && onConfirm(proposal.id)} disabled={busy || !proposal.id}>{busy ? "处理中…" : proposal.changes.length ? "确认并应用今天的计划" : "确认今天的计划"}</button><button className="button button-outline button-small" onClick={() => proposal.id && onDismiss(proposal.id)} disabled={busy || !proposal.id}>暂不应用</button></div>
     </>}
   </section>;
 }
@@ -386,7 +406,7 @@ function TaskRow({ task, index, onStart, onLock, busy, skillLabels }: { task: Pl
 }
 function MockPage({ data, onStart, busy }: { data: BootstrapData; onStart: (section: "reading" | "listening") => void; busy: boolean }) {
   return <div className="page-content"><PageHeader title="完整模考" subtitle="从现有题库组合完整试卷，按真实机考方式练习。听力与学术阅读分别进行。" />
-    <div className="mock-list">{data.mockAvailability.map((item) => <article className="mock-card" key={item.section}><span className="mock-card-icon"><Icon name={item.section === "reading" ? "book" : "headphones"} /></span><div><h2>{item.section === "reading" ? "学术阅读" : "听力"} · 组合模拟卷</h2><p>{item.message}</p><span className="mock-count"><Icon name={item.ready ? "circle-check" : "time"} size={14} />{item.questions} / {item.expected} 道题</span></div><button className="button button-primary button-small" onClick={() => onStart(item.section)} disabled={!item.ready || busy}>{item.ready ? "进入考前准备" : "材料未齐"}</button></article>)}</div>
+    <div className="mock-list">{data.mockAvailability.map((item) => <article className="mock-card" key={item.section}><span className="mock-card-icon"><Icon name={item.section === "reading" ? "book" : "headphones"} /></span><div><h2>{item.section === "reading" ? "学术阅读" : "听力"} · 组合模拟卷</h2><p>{item.message}</p><span className="mock-count"><Icon name={item.ready ? "circle-check" : "time"} size={14} />{item.questions} / {item.expected} 道题</span></div><button className="button button-primary button-small" onClick={() => onStart(item.section)} disabled={!item.ready || busy}>{busy ? "准备中…" : item.ready ? "进入考前准备" : "材料未齐"}</button></article>)}</div>
     <p className="footer-note">组合模拟卷由独立分段材料组成。正式开考后倒计时持续运行，交卷后可查看答案与解析。</p>
   </div>;
 }
@@ -433,12 +453,12 @@ function LibraryPage({ section, data, onStart }: { section: "reading" | "listeni
     {!activities.length ? <div className="empty-state"><Icon name="file" /><h2>暂时没有可用的{sectionLabel[section]}练习</h2><p>新的练习内容准备好后会显示在这里。</p></div>
       : !filtered.length ? <div className="empty-state"><Icon name="search" /><h2>没有匹配的练习</h2><p>换个关键词，或把「{part === 0 ? "全部分段" : partLabel[section][part]}」与难度筛选切回「全部难度」。</p></div>
       : <>
-        <div className="library-list">{visible.map((item) => <article className="library-row" key={item.id}><span className="library-icon"><Icon name={section === "listening" ? "headphones" : "book"} /></span><div className="library-body"><h2 className="library-title"><span className="library-title-text" title={item.title}>{item.title}</span>{item.sample && <span className="sample-chip">原创演示</span>}</h2><p className="library-desc" title={item.description}>{item.description || "练习材料"}</p></div><div className="library-meta">{item.part && <span className="chip part-chip">{partLabel[section][item.part]}</span>}<span className="chip"><Icon name="time" size={13} />约 {item.minutes} 分钟</span><span className="chip"><Icon name="file" size={13} />{item.questions.length} 道题</span><span className="chip"><Icon name="gauge" size={13} />{difficultyLabel[item.difficulty]}</span></div><button className="button button-outline button-small" onClick={() => onStart(item.id)}>开始练习 <Icon name="arrow" size={14} /></button></article>)}</div>
+        <div className="library-list">{visible.map((item) => <article className="library-row" key={item.id}><span className="library-icon"><Icon name={section === "listening" ? "headphones" : "book"} /></span><div className="library-body"><h2 className="library-title"><span className="library-title-text" title={item.title}>{item.title}</span>{item.sample && <span className="sample-chip">原创演示</span>}</h2><p className="library-desc" title={item.description}>{item.description || "练习材料"}</p></div><div className="library-meta">{item.part && <span className="chip part-chip">{partLabel[section][item.part]}</span>}<span className="chip"><Icon name="time" size={13} />约 {item.minutes} 分钟</span><span className="chip"><Icon name="file" size={13} />{item.questionCount} 道题</span><span className="chip"><Icon name="gauge" size={13} />{difficultyLabel[item.difficulty]}</span></div><button className="button button-outline button-small" onClick={() => onStart(item.id)}>开始练习 <Icon name="arrow" size={14} /></button></article>)}</div>
         {filtered.length > limit && <div className="load-more"><button className="button button-soft" onClick={() => setLimit((value) => value + 20)}>加载更多（还有 {filtered.length - limit} 份）</button></div>}
       </>}
   </div>;
 }
-function ProfilePage({ data, onAttempt, busy }: { data: BootstrapData; onAttempt: (id: string) => void; busy: boolean }) {
+function ProfilePage({ data, onAttempt, busy, pendingAttempt }: { data: BootstrapData; onAttempt: (id: string) => void; busy: boolean; pendingAttempt: string }) {
   const total = data.attempts.reduce((sum, item) => sum + item.total, 0);
   const correct = data.attempts.reduce((sum, item) => sum + item.score, 0);
   return <div className="page-content"><PageHeader title="学习画像" subtitle="短练习保留原始答对数，不用少量题目猜测 Band 分数。重复的新题表现会逐步累积证据。" />
@@ -447,7 +467,7 @@ function ProfilePage({ data, onAttempt, busy }: { data: BootstrapData; onAttempt
       {data.evidence.length ? <div className="evidence-list">{data.evidence.map((item) => <article className="evidence-row" key={item.pluginId + ":" + item.skillTag}><strong>{data.skillLabels[item.skillTag] ?? item.skillTag}</strong><span>{sectionLabel[item.pluginId]} · 近 30 天独立答对 {item.recentIndependentCorrect ?? 0}/{item.recentIndependentSamples ?? 0} · 用提示 {item.recentHinted ?? 0}</span><div className="evidence-meter"><i style={{ width: percent(item.recentIndependentCorrect ?? 0, item.recentIndependentSamples ?? 0) + "%" }} /></div><span className="confidence">{item.evidenceStatus === "insufficient" ? "证据不足 · 需要基线练习" : confidenceText(item.confidence)}{item.userConfirmedCause ? " · " + item.userConfirmedCause : ""}</span></article>)}</div> : <div className="empty-callout"><Icon name="chart" /><div className="empty-callout-copy"><strong>先完成一次练习，画像才会开始形成</strong><p>一次结果只是线索；重复的新题表现才会提高判断把握。</p></div></div>}
     </section>
     <section className="profile-attempts"><div className="section-heading"><h2>最近练习</h2><span className="small-count">{data.attempts.length} 次已提交</span></div>
-      {data.attempts.length ? <div className="attempt-list">{data.attempts.map((item) => <div className="attempt-row" key={item.attemptId}><span>{sectionLabel[item.pluginId]} · {item.mode === "mock" ? "完整模考" : item.mode === "review" ? "错题复习" : "专项练习"} · {new Date(item.submittedAt).toLocaleString("zh-CN")}</span><strong className="attempt-result">{item.score} / {item.total}</strong><button type="button" className="text-action" onClick={() => onAttempt(item.attemptId)} disabled={busy}>查看复盘</button></div>)}</div> : <div className="empty-state compact-empty"><Icon name="file" /><h2>还没有提交的练习</h2><p>提交后会看到答案、提示使用情况和文章证据。</p></div>}
+      {data.attempts.length ? <div className="attempt-list">{data.attempts.map((item) => <div className="attempt-row" key={item.attemptId}><span>{sectionLabel[item.pluginId]} · {item.mode === "mock" ? "完整模考" : item.mode === "review" ? "错题复习" : "专项练习"} · {new Date(item.submittedAt).toLocaleString("zh-CN")}</span><strong className="attempt-result">{item.score} / {item.total}</strong><button type="button" className="text-action" onClick={() => onAttempt(item.attemptId)} disabled={busy}>{pendingAttempt === item.attemptId ? "打开中…" : "查看复盘"}</button></div>)}</div> : <div className="empty-state compact-empty"><Icon name="file" /><h2>还没有提交的练习</h2><p>提交后会看到答案、提示使用情况和文章证据。</p></div>}
     </section>
   </div>;
 }
@@ -551,8 +571,8 @@ function restoreExamView(root: HTMLElement, snapshot: ExamViewSnapshot): () => v
   };
 }
 
-function WorkspacePage({ session, plugin, skillLabels, busy, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted }: {
-  session: Session; plugin?: BootstrapData["plugins"][number]; skillLabels: Record<string, string>; busy: boolean; error: string; onBack: () => void; onAnswer: (answers: Record<string, string>) => void;
+function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted }: {
+  session: Session; plugin?: BootstrapData["plugins"][number]; skillLabels: Record<string, string>; busy: boolean; submitting: boolean; error: string; onBack: () => void; onAnswer: (answers: Record<string, string>) => void;
   onQuestion: (id: string) => void; onSubmit: (answers: Record<string, string>, questionTimeSeconds: Record<string, number>) => Promise<boolean>;
   onCoach: () => void; onCause: (qid: string, tag: string, cause: string) => Promise<boolean>; onAudioInterrupted: (reason: string) => void;
 }) {
@@ -884,6 +904,12 @@ function WorkspacePage({ session, plugin, skillLabels, busy, error, onBack, onAn
         {timeoutState === "failed" && <div className="exam-exit-actions"><button type="button" className="button button-primary" onClick={retryTimeoutSubmit}>重新提交</button></div>}
       </div>
     </div>}
+    {submitting && !result && timeoutState === "idle" && <div className="exam-exit-overlay" role="presentation">
+      <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label="Submitting answers">
+        <h2>Submitting…</h2>
+        <p>正在保存并提交答案，请稍候。</p>
+      </div>
+    </div>}
     {result && <ResultCauses session={session} onCause={onCause} onBack={onBack} busy={busy} saving={saving} />}
     {exitOpen && <div className="exam-exit-overlay" role="presentation" onClick={() => setExitOpen(false)}>
       <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label="Exit practice" onClick={(event) => event.stopPropagation()}>
@@ -922,11 +948,12 @@ function CausePicker({ response, question, index, onConfirm }: { response: Attem
   const [tag, setTag] = useState(question.skillTags[0] ?? "");
   const [cause, setCause] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const options = ["没定位到关键信息", "同义改写没识别出来", "忽略了范围或限定词", "听错了日期、数字或地点", "时间不够", "其他"];
   return <article className="cause-row"><div><strong>第 {index} 题 · {question.prompt}</strong><p>你的答案：{response.selected || "未作答"} · 参考答案：{response.correctAnswer}</p><p className="cause-evidence">依据：{response.evidence}</p></div><div className="cause-fields">
     <label className="field"><span>关联能力</span><select className="input" value={tag} onChange={(event) => setTag(event.target.value)}>{question.skillTags.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
     <label className="field"><span>我觉得错在</span><select className="input" value={cause} onChange={(event) => { setCause(event.target.value); setSaved(false); }}><option value="">选择一个原因</option>{options.map((item) => <option key={item}>{item}</option>)}</select></label>
-    <button className="button button-soft button-small" disabled={!cause || saved} onClick={() => void onConfirm(tag, cause).then(setSaved)}>{saved ? "已记下" : "确认错因"}</button>
+    <button className="button button-soft button-small" disabled={!cause || saved || saving} onClick={() => { setSaving(true); void onConfirm(tag, cause).then((ok) => { setSaving(false); if (ok) setSaved(true); }); }}>{saved ? "已记下" : saving ? "保存中…" : "确认错因"}</button>
   </div></article>;
 }
 function CoachDrawer({ activity, question, draft, result, data, lines, loading, error, failedMessage, onClose, onSend, onRetry }: {
@@ -950,7 +977,8 @@ function CoachDrawer({ activity, question, draft, result, data, lines, loading, 
       {contextOpen && <div className="coach-context-detail">模式：{result ? "已提交复盘" : draft.mode === "mock" ? "完整模考" : "练习中"}<br />当前任务：{task ? task.title + " · " + task.reason : "自主练习"}<br />目标：听力 {data.profile.targetListening.toFixed(1)}、阅读 {data.profile.targetReading.toFixed(1)} · 每日 {data.profile.dailyMinutes} 分钟<br />当前作答：{draft.answers[question.id] || "尚未作答"}<br />提示记录：{draft.hintedQuestionIds.length ? draft.hintedQuestionIds.length + " 道题用过提示" : "尚无提示记录"}<br />相关能力：{question.skillTags.map((item) => data.skillLabels[item] ?? item).join("、")}<br />历史相似错题：{priorErrors} 道<br />能力证据：{related.length ? related.map((item) => (data.skillLabels[item.skillTag] ?? item.skillTag) + " 独立答对 " + item.independent + "/" + item.total).join("；") : "还没有相关记录"}<br />本题结果：{response ? response.correct ? "答对" : "答错" : "尚未提交"}<br />材料片段：{source.slice(0, 360)}{source.length > 360 ? "…" : ""}</div>}
     </div>
     <div className="coach-intro">我会先看题目和你的作答记录，再一起找线索。你可以直接说卡住的地方。</div>
-    <div className="coach-messages" ref={list}>{lines.length ? lines.map((line) => <div className={"coach-message " + line.role} key={line.id}>{line.role === "assistant" && <span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span>}<div className="coach-bubble">{line.text}</div></div>) : <p className="coach-empty">“这题我该先看哪里？”<br />“这两个选项怎么区分？”</p>}
+    <div className="coach-messages" ref={list}>{lines.length ? lines.map((line) => <div className={"coach-message " + line.role} key={line.id}>{line.role === "assistant" && <span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span>}<div className="coach-bubble">{line.text}</div></div>) : loading ? <div className="coach-message assistant"><span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span><div className="coach-bubble">正在加载对话…</div></div> : <p className="coach-empty">“这题我该先看哪里？”<br />“这两个选项怎么区分？”</p>}
+      {loading && lines.length > 0 && <div className="coach-message assistant"><span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span><div className="coach-bubble">正在组织回复…</div></div>}
       {!data.aiConfigured && <div className="coach-setup">学习导师暂时无法回复，请稍后再试。</div>}
       {response && !response.correct && <div className="coach-suggestions"><button className="suggestion-button" onClick={() => setSuggestion(true)}><Icon name="sparkle" size={14} />和我复盘这道错题</button></div>}
       {suggestion && <div className="coach-suggestions"><button className="suggestion-button" onClick={() => send("能结合这题的文章或录音证据，解释我可能错在哪里吗？")} disabled={!data.aiConfigured || loading}><Icon name="sparkle" size={14} />根据证据分析错因</button></div>}

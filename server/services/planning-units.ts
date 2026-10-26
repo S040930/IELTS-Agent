@@ -97,8 +97,7 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
 
-function estimatedMinutes(activity: Activity, allActivities: Activity[], questionIds: string[], kind: QuestionKind, tag: string, timings: QuestionTimingSample[]): number {
-  const questionById = new Map(allActivities.flatMap((item) => item.questions).map((question) => [question.id, question]));
+function estimatedMinutes(activity: Activity, questionById: Map<string, Question>, questionIds: string[], kind: QuestionKind, tag: string, timings: QuestionTimingSample[]): number {
   const samples = timings.filter((sample) => {
     const question = questionById.get(sample.questionId);
     return question?.kind === kind && question.skillTags.includes(tag);
@@ -127,6 +126,8 @@ export function buildPlanningUnits(input: {
   maxQuestions?: number;
 }): PlanningUnit[] {
   const attempted = new Set(input.attemptedQuestionIds);
+  // Built once: every planning unit needs the same question lookup.
+  const questionById = new Map(input.activities.flatMap((activity) => activity.questions).map((question) => [question.id, question]));
   const dueByActivity = new Map<string, Set<string>>();
   for (const review of input.dueReviews) {
     const ids = dueByActivity.get(review.activityId) ?? new Set<string>();
@@ -180,7 +181,7 @@ export function buildPlanningUnits(input: {
           focusSkillTag,
           skillTags,
           questionCount: questionIds.length,
-          minutes: estimatedMinutes(activity, input.activities, questionIds, questionKind, focusSkillTag, input.timingSamples),
+          minutes: estimatedMinutes(activity, questionById, questionIds, questionKind, focusSkillTag, input.timingSamples),
           difficulty: activity.difficulty,
           novelty: novelty as PlanningUnit["novelty"],
           evidenceStatus: (skillEvidence?.independentSamples ?? 0) < 3 ? "insufficient" : "observed",
