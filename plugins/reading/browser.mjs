@@ -11,6 +11,7 @@ export function mountPractice(root, { activity, draft, result, onAnswer, onSubmi
   const cleanup = mountExamBehavior(root, {
     activity: view,
     draft,
+    result,
     answers,
     onAnswer,
     onSubmit,
