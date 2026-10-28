@@ -19,6 +19,325 @@ export function findQuoteOffset(source, start, quote) {
   return best;
 }
 
+/* ---------- 听力原文答案句定位 ----------
+ * 题库里的 evidence 是人工摘录的答案句，可能与原文在大小写、标点、
+ * 换行或个别措辞上有差异。这里先把文本切成带原文字符偏移的 token，
+ * 先做忽略标点/空白的整句匹配，再用 LCS 在句子范围内做近似匹配，
+ * 供 transcript 渲染时生成 <mark> 与滚动定位。 */
+
+const MATCH_TOKEN_PATTERN = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
+const EVIDENCE_LABEL_PATTERN = /^(?:原文(?:答案句)?|录音原文|答案句|证据|依据|定位句|evidence|answer\s+sentence|transcript)\s*[:：]\s*/i;
+const SENTENCE_END = /[.!?。！？]/;
+const QUOTE_EDGE = /^["“”'‘’]+|["“”'‘’]+$/g;
+
+function normalizeMatchToken(value) {
+  return String(value)
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .replace(/[’‘]/g, "'")
+    .toLocaleLowerCase("en");
+}
+
+/** 去掉 evidence 里常见的“原文：/Evidence:”前缀和包裹引号。 */
+export function normalizeEvidenceText(value) {
+  let source = String(value ?? "").replace(/\r/g, "").trim();
+  source = source.replace(EVIDENCE_LABEL_PATTERN, "");
+  return source.replace(QUOTE_EDGE, "").trim();
+}
+
+/** 返回带原文字符偏移的匹配 token；词内撇号保留，标点和空白忽略。 */
+export function tokenizeForMatch(source) {
+  const content = String(source ?? "");
+  const tokens = [];
+  for (const match of content.matchAll(MATCH_TOKEN_PATTERN)) {
+    const start = match.index ?? 0;
+    tokens.push({ value: normalizeMatchToken(match[0]), start, end: start + match[0].length });
+  }
+  return tokens;
+}
+
+function extendToSentencePunctuation(content, end) {
+  return SENTENCE_END.test(content.charAt(end)) ? end + 1 : end;
+}
+
+function exactTokenMatches(source, tokens, needleTokens) {
+  const matches = [];
+  if (!needleTokens.length || needleTokens.length > tokens.length) return matches;
+  for (let index = 0; index <= tokens.length - needleTokens.length; index += 1) {
+    let matched = true;
+    for (let offset = 0; offset < needleTokens.length; offset += 1) {
+      if (tokens[index + offset].value !== needleTokens[offset].value) { matched = false; break; }
+    }
+    if (!matched) continue;
+    const start = tokens[index].start;
+    const end = tokens[index + needleTokens.length - 1].end;
+    matches.push({ start, end: extendToSentencePunctuation(source, end), score: 2 + needleTokens.length / 1000, exact: true, tokens: needleTokens.length });
+  }
+  return matches;
+}
+
+function sentenceRanges(source) {
+  const content = String(source ?? "");
+  const ranges = [];
+  let start = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content.charAt(index);
+    const newline = character === "\n";
+    const previousWord = index > 0 ? /([A-Za-z]{1,6})\.$/.exec(content.slice(Math.max(0, index - 8), index + 1))?.[1] ?? "" : "";
+    const abbreviated = /^(?:mr|mrs|ms|dr|prof|st|vs|etc|inc|ltd|no|fig|approx)$/i.test(previousWord) || /^[A-Z]$/.test(previousWord);
+    const punctuation = !abbreviated && SENTENCE_END.test(character) && (index + 1 >= content.length || /\s/.test(content.charAt(index + 1)));
+    if (!newline && !punctuation) continue;
+    const end = newline ? index : index + 1;
+    if (end > start) ranges.push({ start, end });
+    start = index + 1;
+  }
+  if (start < content.length) ranges.push({ start, end: content.length });
+  return ranges
+    .map((range) => {
+      let from = range.start;
+      let to = range.end;
+      while (from < to && /\s/.test(content.charAt(from))) from += 1;
+      while (to > from && /\s/.test(content.charAt(to - 1))) to -= 1;
+      return { start: from, end: to };
+    })
+    .filter((range) => range.end > range.start);
+}
+
+function lcsTokenMatch(left, right) {
+  const leftLength = left.length;
+  const rightLength = right.length;
+  if (!leftLength || !rightLength) return { length: 0, left: [], right: [] };
+  const width = rightLength + 1;
+  const table = new Uint16Array((leftLength + 1) * width);
+  for (let i = 1; i <= leftLength; i += 1) {
+    const row = i * width;
+    const previous = (i - 1) * width;
+    for (let j = 1; j <= rightLength; j += 1) {
+      table[row + j] = left[i - 1].value === right[j - 1].value
+        ? table[previous + j - 1] + 1
+        : Math.max(table[previous + j], table[row + j - 1]);
+    }
+  }
+  const leftIndices = [];
+  const rightIndices = [];
+  let i = leftLength;
+  let j = rightLength;
+  while (i > 0 && j > 0) {
+    if (left[i - 1].value === right[j - 1].value) {
+      leftIndices.push(i - 1);
+      rightIndices.push(j - 1);
+      i -= 1;
+      j -= 1;
+    } else if (table[(i - 1) * width + j] >= table[i * width + j - 1]) {
+      i -= 1;
+    } else {
+      j -= 1;
+    }
+  }
+  leftIndices.reverse();
+  rightIndices.reverse();
+  return { length: leftIndices.length, left: leftIndices, right: rightIndices };
+}
+
+/**
+ * 在一段原文中定位答案句。返回 { start, end, score, exact }，找不到返回 null。
+ * - 先做忽略标点/大小写/空白的完整 token 匹配；
+ * - 不足 3 个 token 的短句只在原文中唯一出现时才接受；
+ * - 完整匹配失败时，用 LCS 在句子范围内近似匹配（覆盖率 ≥ 70%）。
+ */
+export function findEvidenceMatch(source, evidence) {
+  const content = String(source ?? "");
+  const needle = normalizeEvidenceText(evidence);
+  if (!content || !needle) return null;
+  const tokens = tokenizeForMatch(content);
+  const needleTokens = tokenizeForMatch(needle);
+  if (!needleTokens.length) return null;
+  const exact = exactTokenMatches(content, tokens, needleTokens);
+  if (exact.length) {
+    if (needleTokens.length <= 2 && exact.length > 1) return null;
+    const first = exact[0];
+    return { start: first.start, end: first.end, score: first.score, exact: true };
+  }
+  if (needleTokens.length < 4) return null;
+  let best = null;
+  for (const sentence of sentenceRanges(content)) {
+    const segment = content.slice(sentence.start, sentence.end);
+    const segmentTokens = tokenizeForMatch(segment).map((token) => ({
+      ...token,
+      start: token.start + sentence.start,
+      end: token.end + sentence.start,
+    }));
+    if (segmentTokens.length < 3) continue;
+    const lcs = lcsTokenMatch(needleTokens, segmentTokens);
+    const coverage = lcs.length / needleTokens.length;
+    if (coverage < 0.7 || lcs.length < 4) continue;
+    const precision = lcs.length / segmentTokens.length;
+    const score = coverage + Math.min(0.12, precision * 0.12);
+    if (best && score <= best.score) continue;
+    const first = lcs.right[0];
+    const last = lcs.right[lcs.right.length - 1];
+    const start = segmentTokens[first].start;
+    const end = extendToSentencePunctuation(content, segmentTokens[last].end);
+    best = { start, end, score, exact: false };
+  }
+  return best;
+}
+
+/** 多句 evidence 拆成可分别定位的片段；片段过短时保持整句，避免误拆。 */
+function evidencePieces(evidence) {
+  const source = normalizeEvidenceText(evidence);
+  if (!source) return [];
+  const sentences = source.split(/(?<=[.!?。！？])\s+/).map((item) => item.trim()).filter(Boolean);
+  if (sentences.length > 1 && sentences.every((item) => tokenizeForMatch(item).length >= 4)) return sentences;
+  const parts = source.split(/\s*(?:\/|／|；|;|\|)\s*|\n+/).map((item) => item.trim()).filter(Boolean);
+  if (parts.length > 1 && parts.every((item) => tokenizeForMatch(item).length >= 3)) return parts;
+  return [source];
+}
+
+function parseTranscriptSource(source) {
+  const blocks = String(source?.transcript ?? "").replace(/\r/g, "").trim().split(/\n\s*\n/).filter(Boolean);
+  const cues = blocks.map((block) => {
+    const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+    const timeIndex = lines.findIndex((line) => line.includes("-->"));
+    const time = timeIndex >= 0 ? lines[timeIndex] : "";
+    const body = lines.filter((_, index) => index !== timeIndex && !(timeIndex >= 0 && index < timeIndex));
+    const original = [];
+    const chinese = [];
+    for (const line of body) {
+      const translated = /^(?:中文|Chinese|Mandarin)\s*[:：]\s*/i.exec(line);
+      if (translated) chinese.push(line.slice(translated[0].length));
+      else original.push(line);
+    }
+    return { time, original, chinese };
+  });
+  const entries = [];
+  const chunks = [];
+  let cursor = 0;
+  for (let cueIndex = 0; cueIndex < cues.length; cueIndex += 1) {
+    for (const kind of ["original", "chinese"]) {
+      const list = cues[cueIndex][kind];
+      for (let lineIndex = 0; lineIndex < list.length; lineIndex += 1) {
+        const line = list[lineIndex];
+        entries.push({ cueIndex, kind, lineIndex, text: line, start: cursor, end: cursor + line.length });
+        chunks.push(line);
+        cursor += line.length + 1;
+      }
+    }
+  }
+  return { title: source?.title, cues, lines: entries, text: chunks.join("\n") };
+}
+
+function locateAcrossSections(sections, evidence, preferredSection = null) {
+  let best = null;
+  for (let index = 0; index < sections.length; index += 1) {
+    const match = findEvidenceMatch(sections[index].text, evidence);
+    if (!match) continue;
+    const preferred = Number.isInteger(preferredSection) && index === preferredSection ? 0.03 : 0;
+    const score = match.score + preferred;
+    if (best && score <= best.score) continue;
+    best = { ...match, score, sectionIndex: index };
+  }
+  return best;
+}
+
+function locateAnswerRanges(sections, evidence, preferredSection = null) {
+  const whole = locateAcrossSections(sections, evidence, preferredSection);
+  const pieces = evidencePieces(evidence);
+  if (pieces.length <= 1) return whole ? [whole] : [];
+  const pieceMatches = pieces.map((piece) => locateAcrossSections(sections, piece, preferredSection)).filter(Boolean);
+  if (pieceMatches.length === pieces.length) return whole?.exact ? [whole] : pieceMatches;
+  if (whole) return [whole];
+  return pieceMatches;
+}
+
+function renderMarkedTranscriptLine(line, marks) {
+  const merged = [];
+  for (const mark of [...marks].sort((a, b) => a.from - b.from || b.to - a.to)) {
+    const last = merged[merged.length - 1];
+    if (last && mark.from < last.to) {
+      last.to = Math.max(last.to, mark.to);
+      last.endOfRange = last.endOfRange || mark.endOfRange;
+      if (!last.targets.includes(mark.target)) last.targets.push(mark.target);
+      continue;
+    }
+    merged.push({ from: mark.from, to: mark.to, endOfRange: mark.endOfRange, targets: [mark.target] });
+  }
+  let html = "";
+  let cursor = 0;
+  for (const group of merged) {
+    html += text(line.slice(cursor, group.from));
+    const numbers = [...new Set(group.targets.map((target) => target.number).filter((number) => number !== null && number !== undefined))].map(String).join("·");
+    const questionIds = group.targets.map((target) => String(target.questionId)).join(" ");
+    const states = group.targets.map((target) => target.state ?? "unanswered");
+    const state = states.includes("wrong") ? "wrong" : states.includes("unanswered") ? "unanswered" : "correct";
+    html += `<mark class="exam-transcript-answer" data-answer-state="${state}" data-answer-question="${text(questionIds)}" data-answer-number="${text(numbers)}">${text(line.slice(group.from, group.to))}</mark>`;
+    if (numbers && group.endOfRange) html += `<span class="exam-transcript-answer-tag" aria-hidden="true">${text(numbers)}</span>`;
+    cursor = group.to;
+  }
+  return html + text(line.slice(cursor));
+}
+
+/**
+ * 把 transcript 数据渲染成 HTML，并返回每道题的匹配结果。
+ * answerSentences: [{ questionId, number, evidence, state }]
+ * 返回 { html, matches: [{ questionId, number, ranges, kinds }] }。
+ */
+export function renderTranscriptHtml(data, options = {}) {
+  const answerSentences = Array.isArray(options.answerSentences) ? options.answerSentences : [];
+  const showOriginal = options.showOriginal !== false;
+  const showChinese = options.showChinese !== false;
+  const sections = Array.isArray(data?.audioSections)
+    ? data.audioSections.filter((item) => typeof item?.transcript === "string" && item.transcript.trim())
+    : [];
+  const sources = sections.length ? sections : (typeof data?.transcript === "string" && data.transcript.trim() ? [{ title: "", transcript: data.transcript }] : []);
+  if (!sources.length) return { html: "", matches: [] };
+  const parsed = sources.map(parseTranscriptSource);
+  const lineMarks = new Map();
+  const matches = [];
+  for (const target of answerSentences) {
+    const evidence = normalizeEvidenceText(target?.evidence);
+    if (!evidence) continue;
+    const ranges = locateAnswerRanges(parsed, evidence, target?.preferredSection);
+    if (!ranges.length) continue;
+    const kinds = new Set();
+    for (const range of ranges) {
+      for (const line of parsed[range.sectionIndex].lines) {
+        if (line.end <= range.start || line.start >= range.end) continue;
+        kinds.add(line.kind);
+        const from = Math.max(range.start, line.start) - line.start;
+        const to = Math.min(range.end, line.end) - line.start;
+        if (to <= from) continue;
+        const key = `${range.sectionIndex}:${line.cueIndex}:${line.kind}:${line.lineIndex}`;
+        const list = lineMarks.get(key) ?? [];
+        list.push({ from, to, target, endOfRange: range.end <= line.end });
+        lineMarks.set(key, list);
+      }
+    }
+    matches.push({ questionId: target.questionId, number: target.number, ranges, kinds: [...kinds] });
+  }
+  const renderLine = (sectionIndex, cueIndex, kind, lineIndex, line) => {
+    const marks = lineMarks.get(`${sectionIndex}:${cueIndex}:${kind}:${lineIndex}`);
+    return marks?.length ? renderMarkedTranscriptLine(line, marks) : text(line);
+  };
+  const html = parsed.map((section, sectionIndex) => {
+    const cues = section.cues.map((cue, cueIndex) => {
+      const original = cue.original.length
+        ? `<p>${cue.original.map((line, lineIndex) => renderLine(sectionIndex, cueIndex, "original", lineIndex, line)).join("<br>")}</p>`
+        : "";
+      const chinese = cue.chinese.length
+        ? `<p>${cue.chinese.map((line, lineIndex) => renderLine(sectionIndex, cueIndex, "chinese", lineIndex, line)).join("<br>")}</p>`
+        : "";
+      return `<article class="exam-transcript-cue" data-transcript-cue data-audio-section="${sectionIndex}">`
+        + (cue.time ? `<div class="exam-transcript-time">${text(cue.time)}</div>` : "")
+        + `<div class="exam-transcript-original" data-transcript-original-text${showOriginal ? "" : " hidden"}>${original}</div>`
+        + `<div class="exam-transcript-chinese" data-transcript-chinese-text${showChinese ? "" : " hidden"}>${chinese}</div>`
+        + `</article>`;
+    }).join("");
+    return `<section class="exam-transcript-section">${section.title ? `<h3>${text(section.title)}</h3>` : ""}${cues}</section>`;
+  }).join("");
+  return { html, matches };
+}
+
 function scrollParent(node) {
   let element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
   while (element && element !== document.body && element !== document.documentElement) {
@@ -173,9 +492,13 @@ function feedbackMarkup(question, ctx, section) {
     : "";
   const number = question.displayNumber ?? "";
   const evidenceLabel = section === "listening" ? "录音内容" : "文章证据";
+  const locate = section === "listening" && String(response.evidence ?? "").trim()
+    ? `<button type="button" class="exam-answer-locate" data-locate-answer="${text(question.id)}">在原文中定位</button>`
+    : "";
   const summary = `<div class="exam-q-feedback ${statusClass}" role="status"><span>${text(status)}</span>${answer}</div>`;
   const explanation = `<details class="exam-q-explanation"><summary>第 ${text(number)} 题 · 查看证据与解析</summary>`
     + `<p><strong>${text(evidenceLabel)}：</strong>${text(response.evidence || "（无）")}</p>`
+    + `${locate}`
     + `<p><strong>解析：</strong>${text(response.explanation || "（无）")}</p></details>`;
   return summary + explanation;
 }
@@ -677,7 +1000,10 @@ export function createExamHtml({ activity, draft, result, section = "reading", s
     ? `<aside class="exam-transcript-panel" data-transcript-panel hidden aria-label="Listening transcript">`
       + `<header class="exam-transcript-head"><strong>Transcript &amp; analysis</strong><button type="button" data-transcript-close aria-label="Close transcript">×</button></header>`
       + `<div class="exam-transcript-toolbar" role="toolbar" aria-label="Transcript display options">`
-      + `<button type="button" data-transcript-original aria-pressed="true">Original</button><button type="button" data-transcript-chinese aria-pressed="true">Chinese</button><button type="button" data-transcript-analysis aria-expanded="false">Analysis</button></div>`
+      + `<button type="button" data-transcript-original aria-pressed="true">Original</button><button type="button" data-transcript-chinese aria-pressed="true">Chinese</button><button type="button" data-transcript-analysis aria-expanded="false">Analysis</button>`
+      + `<button type="button" data-transcript-answers aria-pressed="true">Answer sentences</button>`
+      + `<span class="exam-transcript-answer-nav" data-transcript-answer-nav hidden><button type="button" data-answer-prev aria-label="Previous answer sentence" title="Previous answer sentence" disabled>‹</button><span class="exam-transcript-answer-position" data-answer-position>0 / 0</span><button type="button" data-answer-next aria-label="Next answer sentence" title="Next answer sentence" disabled>›</button></span></div>`
+      + `<div class="exam-transcript-answer-note" data-answer-note role="status" aria-live="polite"></div>`
       + `<div class="exam-transcript-content" data-transcript-content aria-live="polite"><p class="exam-transcript-status">Open Transcript to load the recording text.</p></div>`
       + `<section class="exam-transcript-analysis" data-transcript-analysis-panel hidden aria-label="Question explanations"><div class="exam-transcript-analysis-content" data-transcript-analysis-content></div></section></aside>`
     : "";
@@ -700,8 +1026,37 @@ export function createExamHtml({ activity, draft, result, section = "reading", s
   return `<div class="exam-shell${inlineResult ? " has-result" : ""}" data-section="${text(section)}">${partStrip}${audio}${main}${toolProxy}${showStudyTools ? renderAnnotationTools() : ""}${reviewDialog}</div>`;
 }
 
+function buildAnswerTargets(activity, result) {
+  if (!result) return [];
+  const questions = Array.isArray(activity?.questions) ? activity.questions : [];
+  const numberById = new Map(questions.map((question, index) => [question.id, question.displayNumber ?? index + 1]));
+  const partByQuestion = new Map();
+  for (const part of activity?.examParts ?? []) {
+    const sectionIndex = Number.isInteger(part?.audioSectionIndex) ? part.audioSectionIndex : (Number(part?.part) || 1) - 1;
+    for (const questionId of part?.questionIds ?? []) partByQuestion.set(questionId, sectionIndex);
+  }
+  const seen = new Set();
+  const targets = [];
+  for (const response of Array.isArray(result.responses) ? result.responses : []) {
+    const questionId = response?.questionId;
+    if (!questionId || seen.has(questionId)) continue;
+    const evidence = String(response.evidence ?? "").trim();
+    if (!evidence) continue;
+    seen.add(questionId);
+    const selected = String(response.selected ?? "").trim();
+    targets.push({
+      questionId,
+      number: numberById.get(questionId) ?? null,
+      preferredSection: partByQuestion.get(questionId) ?? null,
+      evidence,
+      state: response.correct ? "correct" : selected ? "wrong" : "unanswered",
+    });
+  }
+  return targets.sort((left, right) => (Number(left.number) || 0) - (Number(right.number) || 0));
+}
+
 export function mountExamBehavior(root, ctx = {}) {
-  const { answers = {}, onAnswer, onSubmit, onCurrentQuestion, onAudioInterrupted, attemptId = "", hasResult = false, activity = {}, draft = {}, now } = ctx;
+  const { answers = {}, onAnswer, onSubmit, onCurrentQuestion, onAudioInterrupted, attemptId = "", hasResult = false, activity = {}, draft = {}, result = null, now } = ctx;
   const cleanups = [];
   const add = (target, type, handler, options) => {
     if (!target) return;
@@ -745,49 +1100,120 @@ export function mountExamBehavior(root, ctx = {}) {
   const transcriptAnalysisToggle = root.querySelector("[data-transcript-analysis]");
   const transcriptAnalysisPanel = root.querySelector("[data-transcript-analysis-panel]");
   const transcriptAnalysisContent = root.querySelector("[data-transcript-analysis-content]");
+  const transcriptAnswersToggle = root.querySelector("[data-transcript-answers]");
+  const transcriptAnswerNav = root.querySelector("[data-transcript-answer-nav]");
+  const transcriptAnswerPrev = root.querySelector("[data-answer-prev]");
+  const transcriptAnswerNext = root.querySelector("[data-answer-next]");
+  const transcriptAnswerPosition = root.querySelector("[data-answer-position]");
+  const transcriptAnswerNote = root.querySelector("[data-answer-note]");
+  const answerTargets = buildAnswerTargets(activity, result);
+  let transcriptMatches = [];
+  let matchedTargets = [];
+  let activeAnswerIndex = -1;
   let transcriptLoaded = false;
   let transcriptRequest = null;
   let analysisLoaded = false;
   let analysisRequest = null;
   let pendingSelection = null;
+  let answerNoteTimer = 0;
+  cleanups.push(() => window.clearTimeout(answerNoteTimer));
+
+  const setAnswerSentencesVisible = (visible) => {
+    transcriptPanel?.classList.toggle("is-answers-off", !visible);
+    transcriptAnswersToggle?.setAttribute("aria-pressed", String(visible));
+  };
+  const updateAnswerNav = () => {
+    if (transcriptAnswerPosition) {
+      transcriptAnswerPosition.textContent = `${activeAnswerIndex >= 0 ? activeAnswerIndex + 1 : 0} / ${matchedTargets.length}`;
+    }
+    const disabled = matchedTargets.length < 2;
+    if (transcriptAnswerPrev) transcriptAnswerPrev.disabled = disabled;
+    if (transcriptAnswerNext) transcriptAnswerNext.disabled = disabled;
+  };
+  const syncMatchedAnswers = () => {
+    const matchedIds = new Set(transcriptMatches.map((match) => match.questionId));
+    matchedTargets = answerTargets.filter((target) => matchedIds.has(target.questionId));
+    activeAnswerIndex = -1;
+    if (transcriptAnswerNav) transcriptAnswerNav.hidden = matchedTargets.length === 0;
+    updateAnswerNav();
+  };
+  const showAnswerNote = (message) => {
+    if (!transcriptAnswerNote) return;
+    transcriptAnswerNote.textContent = message;
+    window.clearTimeout(answerNoteTimer);
+    if (!message) return;
+    answerNoteTimer = window.setTimeout(() => {
+      if (transcriptAnswerNote) transcriptAnswerNote.textContent = "";
+    }, 5200);
+  };
+  const setActiveAnswer = (index, options = {}) => {
+    if (!transcriptContent || !matchedTargets.length) return;
+    setAnswerSentencesVisible(true);
+    const length = matchedTargets.length;
+    activeAnswerIndex = ((index % length) + length) % length;
+    const target = matchedTargets[activeAnswerIndex];
+    for (const mark of transcriptContent.querySelectorAll("mark.exam-transcript-answer.is-active")) mark.classList.remove("is-active");
+    const marks = [...transcriptContent.querySelectorAll(`mark.exam-transcript-answer[data-answer-question~="${cssEscape(target.questionId)}"]`)];
+    for (const mark of marks) mark.classList.add("is-active");
+    updateAnswerNav();
+    if (options.scroll === false || !marks.length) return;
+    requestAnimationFrame(() => {
+      const mark = marks.find((item) => item.isConnected);
+      if (!mark) return;
+      const scroller = scrollParent(mark) ?? transcriptContent;
+      const rect = mark.getBoundingClientRect();
+      const bounds = scroller.getBoundingClientRect();
+      scroller.scrollTo({ top: Math.max(0, scroller.scrollTop + rect.top - bounds.top - Math.max(28, bounds.height * 0.3)), behavior: "smooth" });
+      transcriptPanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  };
+  const setTranscriptLanguage = (kind, visible) => {
+    const button = root.querySelector(kind === "original" ? "[data-transcript-original]" : "[data-transcript-chinese]");
+    button?.setAttribute("aria-pressed", String(visible));
+    for (const node of root.querySelectorAll(kind === "original" ? "[data-transcript-original-text]" : "[data-transcript-chinese-text]")) node.hidden = !visible;
+  };
+  const openTranscript = () => {
+    if (!transcriptPanel) return;
+    transcriptPanel.hidden = false;
+    transcriptToggle?.setAttribute("aria-expanded", "true");
+    root.querySelector(".exam-split")?.classList.add("has-transcript");
+    void loadTranscript();
+  };
+  const locateAnswer = async (questionId) => {
+    const target = answerTargets.find((item) => item.questionId === questionId);
+    if (!target || !transcriptPanel) return;
+    openTranscript();
+    await loadTranscript();
+    if (!transcriptLoaded) return;
+    setAnswerSentencesVisible(true);
+    const match = transcriptMatches.find((item) => item.questionId === questionId);
+    const index = matchedTargets.findIndex((item) => item.questionId === questionId);
+    if (!match || index < 0) {
+      showAnswerNote(`${target.number != null ? `第 ${target.number} 题` : "这道题"}的答案句未能在原文中匹配，请对照录音内容手动查找。`);
+      return;
+    }
+    if (match.kinds.includes("original")) setTranscriptLanguage("original", true);
+    if (match.kinds.includes("chinese")) setTranscriptLanguage("chinese", true);
+    showAnswerNote("");
+    setActiveAnswer(index);
+  };
 
   const renderTranscript = (data) => {
     if (!transcriptContent) return;
-    const sections = Array.isArray(data?.audioSections)
-      ? data.audioSections.filter((item) => typeof item?.transcript === "string" && item.transcript.trim())
-      : [];
-    const sources = sections.length ? sections : (typeof data?.transcript === "string" && data.transcript.trim() ? [{ title: "", transcript: data.transcript }] : []);
-    if (!sources.length) {
-      transcriptContent.innerHTML = `<p class="exam-transcript-status">Transcript is not available for this recording yet.</p>`;
-      transcriptLoaded = true;
-      return;
-    }
     const showOriginal = root.querySelector("[data-transcript-original]")?.getAttribute("aria-pressed") !== "false";
     const showChinese = root.querySelector("[data-transcript-chinese]")?.getAttribute("aria-pressed") !== "false";
-    transcriptContent.innerHTML = sources.map((source, sectionIndex) => {
-      const blocks = String(source.transcript).replace(/\r/g, "").trim().split(/\n\s*\n/).filter(Boolean);
-      const cues = blocks.map((block) => {
-        const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
-        const timeIndex = lines.findIndex((line) => line.includes("-->"));
-        const time = timeIndex >= 0 ? lines[timeIndex] : "";
-        const body = lines.filter((_, index) => index !== timeIndex && !(timeIndex >= 0 && index < timeIndex));
-        const original = [];
-        const chinese = [];
-        for (const line of body) {
-          const translated = /^(?:中文|Chinese|Mandarin)\s*[:：]\s*/i.exec(line);
-          if (translated) chinese.push(line.slice(translated[0].length));
-          else original.push(line);
-        }
-        const renderLines = (items) => items.length ? `<p>${text(items.join("\n")).replace(/\n/g, "<br>")}</p>` : "";
-        return `<article class="exam-transcript-cue" data-transcript-cue data-audio-section="${sectionIndex}">`
-          + (time ? `<div class="exam-transcript-time">${text(time)}</div>` : "")
-          + `<div class="exam-transcript-original" data-transcript-original-text${showOriginal ? "" : " hidden"}>${renderLines(original)}</div>`
-          + `<div class="exam-transcript-chinese" data-transcript-chinese-text${showChinese ? "" : " hidden"}>${renderLines(chinese)}</div>`
-          + `</article>`;
-      }).join("");
-      return `<section class="exam-transcript-section">${source.title ? `<h3>${text(source.title)}</h3>` : ""}${cues}</section>`;
-    }).join("");
+    const view = renderTranscriptHtml(data, { answerSentences: answerTargets, showOriginal, showChinese });
+    if (!view.html) {
+      transcriptContent.innerHTML = `<p class="exam-transcript-status">Transcript is not available for this recording yet.</p>`;
+      transcriptLoaded = true;
+      transcriptMatches = [];
+      syncMatchedAnswers();
+      return;
+    }
+    transcriptContent.innerHTML = view.html;
+    transcriptMatches = view.matches;
     transcriptLoaded = true;
+    syncMatchedAnswers();
   };
   const loadTranscript = async () => {
     if (!transcriptContent || !attemptId || transcriptLoaded || transcriptRequest) return transcriptRequest;
@@ -810,7 +1236,7 @@ export function mountExamBehavior(root, ctx = {}) {
     if (!transcriptAnalysisContent) return;
     const explanations = Array.isArray(data?.explanations) ? data.explanations : [];
     transcriptAnalysisContent.innerHTML = explanations.length
-      ? explanations.map((item) => `<article class="exam-transcript-explanation"><h4>Question ${text(item.displayNumber ?? "")}${item.answer ? ` · Answer: ${text(item.answer)}` : ""}</h4>${item.prompt ? `<p class="exam-transcript-question">${text(item.prompt)}</p>` : ""}${item.evidence ? `<p><strong>Evidence</strong><br>${text(item.evidence).replace(/\n/g, "<br>")}</p>` : ""}${item.explanation ? `<p><strong>Explanation</strong><br>${text(item.explanation).replace(/\n/g, "<br>")}</p>` : ""}</article>`).join("")
+      ? explanations.map((item) => `<article class="exam-transcript-explanation"><h4>Question ${text(item.displayNumber ?? "")}${item.answer ? ` · Answer: ${text(item.answer)}` : ""}</h4>${item.prompt ? `<p class="exam-transcript-question">${text(item.prompt)}</p>` : ""}${item.evidence ? `<p><strong>Evidence</strong><br>${text(item.evidence).replace(/\n/g, "<br>")}</p><button type="button" class="exam-answer-locate" data-locate-answer="${text(item.questionId)}">在原文中定位</button>` : ""}${item.explanation ? `<p><strong>Explanation</strong><br>${text(item.explanation).replace(/\n/g, "<br>")}</p>` : ""}</article>`).join("")
       : `<p class="exam-transcript-status">No explanations are available for this activity yet.</p>`;
     analysisLoaded = true;
   };
@@ -1301,11 +1727,12 @@ export function mountExamBehavior(root, ctx = {}) {
     }
     const transcriptButton = target.closest("[data-transcript-toggle]");
     if (transcriptButton instanceof HTMLElement) {
-      const open = Boolean(transcriptPanel?.hidden);
-      if (transcriptPanel) transcriptPanel.hidden = !open;
-      transcriptToggle?.setAttribute("aria-expanded", String(open));
-      root.querySelector(".exam-split")?.classList.toggle("has-transcript", open);
-      if (open) void loadTranscript();
+      if (transcriptPanel?.hidden) openTranscript();
+      else {
+        if (transcriptPanel) transcriptPanel.hidden = true;
+        transcriptToggle?.setAttribute("aria-expanded", "false");
+        root.querySelector(".exam-split")?.classList.remove("has-transcript");
+      }
       return;
     }
     if (target.closest("[data-transcript-close]")) {
@@ -1316,16 +1743,31 @@ export function mountExamBehavior(root, ctx = {}) {
     }
     const originalToggle = target.closest("[data-transcript-original]");
     if (originalToggle instanceof HTMLElement) {
-      const show = originalToggle.getAttribute("aria-pressed") !== "true";
-      originalToggle.setAttribute("aria-pressed", String(show));
-      for (const node of root.querySelectorAll("[data-transcript-original-text]")) node.hidden = !show;
+      setTranscriptLanguage("original", originalToggle.getAttribute("aria-pressed") !== "true");
       return;
     }
     const chineseToggle = target.closest("[data-transcript-chinese]");
     if (chineseToggle instanceof HTMLElement) {
-      const show = chineseToggle.getAttribute("aria-pressed") !== "true";
-      chineseToggle.setAttribute("aria-pressed", String(show));
-      for (const node of root.querySelectorAll("[data-transcript-chinese-text]")) node.hidden = !show;
+      setTranscriptLanguage("chinese", chineseToggle.getAttribute("aria-pressed") !== "true");
+      return;
+    }
+    const answersToggle = target.closest("[data-transcript-answers]");
+    if (answersToggle instanceof HTMLElement) {
+      setAnswerSentencesVisible(answersToggle.getAttribute("aria-pressed") !== "true");
+      return;
+    }
+    if (target.closest("[data-answer-prev]")) {
+      if (matchedTargets.length) setActiveAnswer(activeAnswerIndex <= 0 ? matchedTargets.length - 1 : activeAnswerIndex - 1);
+      return;
+    }
+    if (target.closest("[data-answer-next]")) {
+      if (matchedTargets.length) setActiveAnswer(activeAnswerIndex + 1);
+      return;
+    }
+    const locateButton = target.closest("[data-locate-answer]");
+    if (locateButton instanceof HTMLElement) {
+      event.preventDefault();
+      void locateAnswer(locateButton.getAttribute("data-locate-answer") ?? "");
       return;
     }
     const analysisToggle = target.closest("[data-transcript-analysis]");
@@ -1588,6 +2030,12 @@ export function mountExamBehavior(root, ctx = {}) {
     for (const node of root.querySelectorAll("[data-question]")) observer.observe(node);
     cleanups.push(() => observer?.disconnect());
   }
+
+  return () => {
+    for (const dispose of cleanups.splice(0)) dispose();
+  };
+}
+
 
   return () => {
     for (const dispose of cleanups.splice(0)) dispose();
