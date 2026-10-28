@@ -19,7 +19,7 @@
 - 本机网页和内容包保留完整题库；云端上传只导入高频、次高频听力练习，并隐藏内置示例听力题，确保云端听力列表只展示这两个频率层级。
 - 听力练习页按 `groupId` 将题目呈现为完整题组，音频控制保持在作答区上方，题号导航固定在底部；听力原文与逐题解析不随公开题目数据下发，专项练习与错题复习通过 attempt 接口按需加载，完整模考期间不可查看。
 - 阅读与听力提交后保留原答题工作区与题号导航，在题目原位标示正确、错误和未作答状态，并折叠展示证据与解析；答案与判分继续来自现有 attempt 提交结果。
-- 阅读与听力的原位反馈页仍可打开笔记、调整字号和使用 AI 导师；听力提交后保留原文与逐题解析入口。已提交答案保持锁定，计时重置仅在作答期间可用。
+- 阅读与听力的原位反馈页仍可打开笔记、调整字号和使用 AI 导师；听力提交后保留原文与逐题解析入口。听力逐题证据可一键在原文中定位答案句，原文按题号高亮并可切换显示、用上一处/下一处浏览；已提交答案保持锁定，计时重置仅在作答期间可用。
 - 分段字段由 `content:tag-parts` 从练习描述与题号区间推导，写入 `imported_activities.activity_json`（题库以 JSON blob 存储，无需数据库迁移），再经 `content:export` 产出内容包。完整模考从分段材料随机组合，并明确标注组合模拟卷；规则与接口见 `docs/computer-exam.md`。
 - 机考答案与逐题用时继续通过现有草稿 API 写入服务端，并由现有提交接口判分；文章/题干高亮与笔记按 attempt 保存在当前浏览器本地，字号作为浏览器级偏好保存，不发送到服务端或数据库。放弃 attempt 时清除该 attempt 的本地标注。
 - 每次完成考前准备并正式开始练习才创建新 attempt；只有本地活动指针可恢复原 attempt。明确退出会将服务端草稿标为 abandoned，避免旧答案和用时复用；意外中断仍可恢复原 attempt。
@@ -27,6 +27,14 @@
 - 模考倒计时与音频时间线共用服务端校准时间，避免本机时钟偏差增加考试时间。线上完整交卷验收使用独立临时 Neon 数据库与预览部署。
 
 ## 文档索引
+
+- [docs/computer-exam.md](docs/computer-exam.md)：机考界面、准备与交卷流程、组卷快照、计时和音频恢复规则。
+- [README.md](README.md)：本机安装、启动与项目入口。
+- [docs/deploy-vercel.md](docs/deploy-vercel.md)：Vercel、Neon、Blob、密钥与云端题库初始化。
+- [docs/deployment-acceptance-2026-10-23.md](docs/deployment-acceptance-2026-10-23.md)：本轮线上部署、隔离验收、AI 模型恢复和数据清理记录。
+- [docs/plugins.md](docs/plugins.md)：插件 SDK 和生命周期。
+- [docs/content-package.md](docs/content-package.md)：本机内容包结构和组员安装。
+- [docs/learning-system.md](docs/learning-system.md)：画像、计划、复习和本机学习数据。
 
 - [docs/computer-exam.md](docs/computer-exam.md)：机考界面、准备与交卷流程、组卷快照、计时和音频恢复规则。
 - [README.md](README.md)：本机安装、启动与项目入口。
