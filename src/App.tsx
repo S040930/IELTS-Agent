@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PlanTask, PublicActivity, Section } from "./shared/domain.js";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { activitySummary, type ActivityMode, type ActivitySummary, type AnswerDraft, type AttemptResult, type BootstrapData, type CoachMessage, type PlanTask, type PublicActivity, type Section } from "./shared/domain.js";
 import { api, ApiError, setUnauthorizedHandler } from "./services/api.js";
+import { startPlanPolling } from "./services/plan-polling.js";
+import { goalFormReducer, type GoalForm } from "./services/goal-form.js";
 import { Icon, type IconName } from "./components/Icon.js";
 import { SpeakingPage } from "./components/SpeakingPage.js";
 import { LoginView } from "./components/LoginView.js";
@@ -45,15 +47,24 @@ export function App() {
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingAttempt, setPendingAttempt] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [bootToken, setBootToken] = useState(0);
   const loaded = useRef(false);
   const performing = useRef(false);
-
-  const refresh = useCallback(async () => {
-    const value = await api.bootstrap();
+  const coachSending = useRef(false);
+  const bootstrapEpoch = useRef(0);
+  const applyData = useCallback((value: BootstrapData) => {
+    bootstrapEpoch.current++;
     setData(value);
+  }, []);
+
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    const epoch = ++bootstrapEpoch.current;
+    const value = await api.bootstrap(signal);
+    if (epoch === bootstrapEpoch.current && !signal?.aborted && !performing.current) setData(value);
     return value;
   }, []);
 
@@ -71,6 +82,7 @@ export function App() {
     setUnauthorizedHandler(() => {
       void api.authSession().then((state) => {
         if (state.authenticated) return;
+        bootstrapEpoch.current++;
         loaded.current = false;
         setAuthenticated(false);
         setData(undefined);
@@ -79,6 +91,8 @@ export function App() {
         setCoachLines([]);
         setCoachError("");
         setFailedMessage("");
+        setPendingAttempt("");
+        setSubmitting(false);
         setError("");
         setToast("");
       }).catch(() => undefined);
@@ -91,31 +105,30 @@ export function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const boot = await api.bootstrap();
+        // Restore an interrupted attempt while the catalog loads instead of after it.
+        const saved = localStorage.getItem("ielts-active-attempt");
+        const resume = saved
+          ? api.resumeAttempt(saved).then((value) => ({ value }), (reason: unknown) => ({ reason }))
+          : Promise.resolve(undefined);
+        const [boot, resumed] = await Promise.all([api.bootstrap(), resume]);
         if (cancelled) return;
         setData(boot);
-        const saved = localStorage.getItem("ielts-active-attempt");
-        if (saved) {
-          try {
-            const resumed = await api.resumeAttempt(saved);
-            if (cancelled) return;
-            if (!resumed.activity || (!resumed.draft && !resumed.result)) {
-              localStorage.removeItem("ielts-active-attempt");
-            } else {
-              const result = resumed.result;
-              const draft = resumed.draft ?? {
-                attemptId: saved, activityId: resumed.activity.id, mode: result!.mode, answers: result!.answers,
-                saveRevision: result!.saveRevision ?? 0, hintedQuestionIds: result!.hintedQuestionIds, startedAt: result!.startedAt, updatedAt: result!.updatedAt,
-              };
-              setSession({ activity: resumed.activity, draft, result });
-              setQuestionId(resumed.activity.questions[0]?.id ?? "");
-              setPage("workspace");
-            }
-          } catch (reason) {
-            if (cancelled) return;
-            if (reason instanceof ApiError && (reason.status === 404 || reason.status === 410)) localStorage.removeItem("ielts-active-attempt");
-            else if (reason instanceof ApiError && reason.status === 401) return;
-            else setError("练习草稿暂时无法恢复：" + errorMessage(reason));
+        if (resumed && "reason" in resumed) {
+          if (resumed.reason instanceof ApiError && (resumed.reason.status === 404 || resumed.reason.status === 410)) localStorage.removeItem("ielts-active-attempt");
+          else if (resumed.reason instanceof ApiError && resumed.reason.status === 401) return;
+          else setError("练习草稿暂时无法恢复：" + errorMessage(resumed.reason));
+        } else if (resumed?.value) {
+          const { activity, draft, result } = resumed.value;
+          if (!activity || (!draft && !result)) {
+            localStorage.removeItem("ielts-active-attempt");
+          } else {
+            const restored = draft ?? {
+              attemptId: saved!, activityId: activity.id, mode: result!.mode, answers: result!.answers,
+              saveRevision: result!.saveRevision ?? 0, hintedQuestionIds: result!.hintedQuestionIds, startedAt: result!.startedAt, updatedAt: result!.updatedAt,
+            };
+            setSession({ activity, draft: restored, result });
+            setQuestionId(activity.questions[0]?.id ?? "");
+            setPage("workspace");
           }
         }
         if (!cancelled) loaded.current = true;
@@ -125,21 +138,21 @@ export function App() {
   }, [authReady, authenticated, bootToken]);
 
   useEffect(() => {
-    if (!data || data.planProposal.status !== "generating") return;
-    let active = true;
-    const timer = window.setInterval(() => {
-      void api.planProposalStatus().then(({ proposal }) => {
-        if (active && (proposal.id !== data.planProposal.id || proposal.status !== "generating")) void refresh().catch((reason) => setError(errorMessage(reason)));
-      }).catch((reason) => { if (active) setError(errorMessage(reason)); });
-    }, 2500);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [data, refresh]);
+    if (!data || data.planProposal.status !== "generating" || data.planProposal.recoverable || busy) return;
+    return startPlanPolling({
+      proposalId: data.planProposal.id,
+      read: api.planProposalStatus,
+      settled: refresh,
+      error: (reason) => setError(errorMessage(reason)),
+    });
+  }, [data?.planProposal.id, data?.planProposal.status, data?.planProposal.recoverable, busy, refresh]);
 
   const login = useCallback(async (password: string) => { await api.login(password); setAuthenticated(true); }, []);
   const logout = useCallback(async () => {
     await api.logout();
+    bootstrapEpoch.current++;
     setAuthenticated(false); setData(undefined); setSession(undefined);
-    setCoachOpen(false); setCoachLines([]); setCoachError(""); setFailedMessage(""); setError(""); setToast("");
+    setCoachOpen(false); setCoachLines([]); setCoachError(""); setFailedMessage(""); setPendingAttempt(""); setSubmitting(false); setError(""); setToast("");
     loaded.current = false;
   }, []);
 
@@ -152,12 +165,20 @@ export function App() {
   const perform = useCallback(async <T,>(action: () => Promise<T>, done?: (value: T) => void) => {
     if (performing.current) return undefined;
     performing.current = true;
+    bootstrapEpoch.current++;
     setBusy(true);
     setError("");
     try { const value = await action(); done?.(value); return value; }
     catch (reason) { setError(errorMessage(reason)); return undefined; }
-    finally { performing.current = false; setBusy(false); }
+    finally { bootstrapEpoch.current++; performing.current = false; setBusy(false); }
   }, []);
+
+  const prefetchPlugin = useCallback((section: Section) => {
+    const browserUrl = data?.plugins.find((plugin) => plugin.section === section)?.browserUrl;
+    if (!browserUrl) return;
+    // Warm the practice module while the preparation screen is on screen.
+    void import(/* @vite-ignore */ browserUrl).catch(() => undefined);
+  }, [data?.plugins]);
 
   const startActivity = useCallback(async (id: string, mode: ActivityMode = "practice", taskId?: string, reviewIds?: string[], questionIds?: string[]) => {
     const activity = data?.activities.find((item) => item.id === id);
@@ -165,15 +186,17 @@ export function App() {
     setWorkspaceReturnPage(page === "workspace" ? "home" : page);
     setToast(""); setPreparation({ activity, mode, taskId, reviewIds, questionIds });
     setCoachOpen(false); setPage("preparation");
-  }, [data, page]);
+    prefetchPlugin(activity.pluginId);
+  }, [data, page, prefetchPlugin]);
 
   const startMock = useCallback(async (section: "reading" | "listening") => {
     const value = await perform(() => api.prepareMock(section));
     if (!value) return;
     setWorkspaceReturnPage(page === "workspace" ? "mock" : page);
-    setToast(""); setPreparation({ activity: value.activity, mode: "mock" });
+    setToast(""); setPreparation({ activity: activitySummary(value.activity), mode: "mock" });
     setCoachOpen(false); setPage("preparation");
-  }, [page, perform]);
+    prefetchPlugin(value.activity.pluginId);
+  }, [page, perform, prefetchPlugin]);
 
   const launchPreparation = useCallback(async (durations: number[]) => {
     if (!preparation) return false;
@@ -193,57 +216,62 @@ export function App() {
 
   const saveProfile = useCallback(async (profile: Omit<BootstrapData["profile"], "id" | "updatedAt">) => {
     const value = await perform(() => api.setProfile(profile), (updated) => {
-      setData(updated);
+      applyData(updated);
       setToast("目标已保存。");
     });
     return Boolean(value);
-  }, [perform]);
+  }, [perform, applyData]);
 
   const submit = useCallback(async (answers: Record<string, string>, questionTimeSeconds: Record<string, number>) => {
     if (!session) return false;
     const attemptId = session.draft.attemptId;
-    setBusy(true); setError("");
+    setBusy(true); setSubmitting(true); setError("");
     try {
       const result = (await api.submit(attemptId, answers, questionTimeSeconds)).result;
       localStorage.removeItem("ielts-active-attempt");
       setSession((current) => current ? { ...current, draft: { ...current.draft, answers, questionTimeSeconds }, result } : current);
-      setCoachOpen(false); await refresh(); setToast("练习已保存：" + result.score + " / " + result.total + " 题答对。");
+      setCoachOpen(false); setToast("练习已保存：" + result.score + " / " + result.total + " 题答对。");
+      // The attempt is already persisted; refresh the shelf in the background so the
+      // submit state clears as soon as the result arrives.
+      void refresh().catch((reason) => setError(errorMessage(reason)));
       return true;
     } catch (reason) { setError(errorMessage(reason)); return false; }
-    finally { setBusy(false); }
+    finally { setBusy(false); setSubmitting(false); }
   }, [refresh, session]);
 
   const confirmCause = useCallback(async (attemptId: string, qid: string, tag: string, cause: string) => {
     const value = await perform(() => api.confirmCause(attemptId, qid, tag, cause), (updated) => {
-      setData(updated);
+      applyData(updated);
       setToast("错因已记下，明日计划会参考这条证据。");
     });
     return Boolean(value);
-  }, [perform]);
+  }, [perform, applyData]);
 
   const openAttempt = useCallback(async (attemptId: string) => {
+    setPendingAttempt(attemptId);
     const value = await perform(() => api.resumeAttempt(attemptId));
+    setPendingAttempt("");
     if (!value?.result || !value.activity) return;
     setWorkspaceReturnPage("profile");
     setSession({ activity: value.activity, draft: value.result, result: value.result });
     setQuestionId(value.activity.questions[0]?.id ?? "");
     setToast(""); setCoachOpen(false); setCoachLines([]); setPage("workspace");
-  }, [perform]);
+  }, [perform, applyData]);
 
   const confirmPlanProposal = useCallback(async (id: string) => {
     await perform(() => api.confirmPlanProposal(id), (updated) => {
-      setData(updated);
+      applyData(updated);
       setToast(updated.planProposal.status === "failed" ? updated.planProposal.error ?? "锁定任务后方案需要重新规划。" : "已按 AI 建议更新未锁定任务。");
     });
-  }, [perform]);
+  }, [perform, applyData]);
 
   const dismissPlanProposal = useCallback(async (id: string) => {
-    await perform(() => api.dismissPlanProposal(id), (updated) => { setData(updated); setToast("已保留当前学习计划。"); });
-  }, [perform]);
+    await perform(() => api.dismissPlanProposal(id), (updated) => { applyData(updated); setToast("已保留当前学习计划。"); });
+  }, [perform, applyData]);
 
   const retryPlanProposal = useCallback(async () => {
-    await perform(() => api.retryPlanProposal(), setData);
-  }, [perform]);
+    await perform(() => api.retryPlanProposal(), applyData);
+  }, [perform, applyData]);
 
   const loadHistory = useCallback(async () => {
     if (!session) return;
@@ -257,14 +285,16 @@ export function App() {
   }, [session]);
 
   const sendCoach = useCallback(async (message: string) => {
-    if (!session || !questionId || !data?.aiConfigured) return;
+    // A ref guard stops a double Enter/click before the loading state has rendered.
+    if (coachSending.current || !session || !questionId || !data?.aiConfigured) return;
+    coachSending.current = true;
     setCoachLoading(true); setCoachError(""); setFailedMessage("");
     setCoachLines((current) => [...current, { id: crypto.randomUUID(), role: "user", text: message }]);
     try {
       const value = await api.askCoach(coachKey(session.draft.attemptId), session.activity.id, questionId, session.draft.attemptId, message);
       setCoachLines((current) => [...current, { id: value.message.id, role: "assistant", text: value.message.text }]);
     } catch (reason) { setCoachError(errorMessage(reason)); setFailedMessage(message); }
-    finally { setCoachLoading(false); }
+    finally { coachSending.current = false; setCoachLoading(false); }
   }, [data?.aiConfigured, questionId, session]);
 
   const goHome = useCallback(() => {
@@ -304,19 +334,19 @@ export function App() {
     </aside>
     <main className="page-main" key={page}>
       {railHidden && <div className="rail-toolbar"><button className="rail-expand" type="button" aria-label="展开侧边栏" title="展开侧边栏" onClick={toggleRail}><Icon name="menu" size={18} /></button></div>}
-      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={setPage} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), setData)} onSetup={() => setPage("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
+      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={setPage} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), applyData)} onSetup={() => setPage("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
       {(page === "reading" || page === "listening") && <LibraryPage section={page} data={data} onStart={(id) => void startActivity(id)} />}
       {page === "speaking" && <SpeakingPage />}
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
-      {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} />}
+      {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} pendingAttempt={pendingAttempt} />}
       {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} />}
       {page === "preparation" && preparation && <ExamPreparation key={preparation.activity.id} preparation={preparation} busy={busy} onBack={() => { setPreparation(undefined); setPage(workspaceReturnPage); setError(""); }} onStart={launchPreparation} />}
-      {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} />}
+      {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} />}
     </main>
 
     {coachOpen && session && currentQuestion && <CoachDrawer activity={session.activity} question={currentQuestion} draft={session.draft} result={session.result} data={data} lines={coachLines} loading={coachLoading} error={coachError} failedMessage={failedMessage} onClose={() => setCoachOpen(false)} onSend={sendCoach} onRetry={() => failedMessage && void sendCoach(failedMessage)} />}
-    {error && <div className="toast-region" aria-live="polite"><div className="toast" role="alert"><Icon name="close" size={16} />{error}<button className="icon-button" aria-label="关闭提示" onClick={() => setError("")}><Icon name="close" size={15} /></button></div></div>}
+    {error && <div className="toast-region" aria-live="polite"><div className="toast" role="alert"><Icon name="close" size={16} />{error}<button className="button button-outline button-small" disabled={busy} onClick={() => void perform(() => api.bootstrap(), applyData)}>核对状态</button><button className="icon-button" aria-label="关闭提示" onClick={() => setError("")}><Icon name="close" size={15} /></button></div></div>}
     {!error && toast && <div className="toast-region" aria-live="polite"><div className="toast" role="status"><Icon name="sparkle" size={16} />{toast}</div></div>}
   </div>;
 }
@@ -361,14 +391,14 @@ function PlanProposalPanel({ proposal, currentPlan, today, dailyMinutes, skillLa
 }) {
   if (proposal.status === "idle" || proposal.status === "confirmed" || proposal.status === "dismissed") return null;
   return <section className={"plan-proposal " + (proposal.status === "failed" ? "plan-proposal-error" : "")} aria-live="polite">
-    {proposal.status === "generating" && <><strong><Icon name="sparkle" size={16} />AI 正在整理个性化计划</strong><p>你可以继续学习；完成后会在这里显示调整建议。</p></>}
+    {proposal.status === "generating" && <><strong><Icon name="sparkle" size={16} />{proposal.recoverable ? "计划生成可能已中断" : "AI 正在整理个性化计划"}</strong><p>{proposal.recoverable ? "等待时间较长，你可以手动恢复规划。已有计划仍然保留。" : "你可以继续学习；完成后会在这里显示调整建议。"}</p>{proposal.recoverable && <button className="button button-outline button-small" onClick={onRetry} disabled={busy}>恢复规划</button>}</>}
     {proposal.status === "failed" && <><strong><Icon name="close" size={16} />暂时无法生成新计划</strong><p>{proposal.error ?? "AI 规划暂不可用，请稍后重试。"} {hasPlan ? "当前已确认的计划仍然保留。" : "你可以先自主练习，之后再重试生成计划。"}</p><button className="button button-outline button-small" onClick={onRetry} disabled={busy}>重试规划</button></>}
     {proposal.status === "ready" && <>
       <strong><Icon name="sparkle" size={16} />AI 学习计划建议</strong>
       <p>先查看今天的小题组、预计用时和训练重点。确认后今天的计划固定；本日新产生的学习证据会用于明日规划。</p>
       <ProposalSchedule proposal={proposal} currentPlan={currentPlan} today={today} dailyMinutes={dailyMinutes} skillLabels={skillLabels} />
       {proposal.changes.length > 0 && <p className="plan-change-summary">相较当前计划：新增 {proposal.changes.filter((item) => item.kind === "added").length} 项 · 调整 {proposal.changes.filter((item) => item.kind === "updated").length} 项 · 移除 {proposal.changes.filter((item) => item.kind === "removed").length} 项</p>}
-      <div className="plan-proposal-actions"><button className="button button-primary button-small" onClick={() => proposal.id && onConfirm(proposal.id)} disabled={busy || !proposal.id}>{proposal.changes.length ? "确认并应用今天的计划" : "确认今天的计划"}</button><button className="button button-outline button-small" onClick={() => proposal.id && onDismiss(proposal.id)} disabled={busy || !proposal.id}>暂不应用</button></div>
+      <div className="plan-proposal-actions"><button className="button button-primary button-small" onClick={() => proposal.id && onConfirm(proposal.id)} disabled={busy || !proposal.id}>{busy ? "处理中…" : proposal.changes.length ? "确认并应用今天的计划" : "确认今天的计划"}</button><button className="button button-outline button-small" onClick={() => proposal.id && onDismiss(proposal.id)} disabled={busy || !proposal.id}>暂不应用</button></div>
     </>}
   </section>;
 }
@@ -388,7 +418,7 @@ function TaskRow({ task, index, onStart, onLock, busy, skillLabels }: { task: Pl
 }
 function MockPage({ data, onStart, busy }: { data: BootstrapData; onStart: (section: "reading" | "listening") => void; busy: boolean }) {
   return <div className="page-content"><PageHeader title="完整模考" subtitle="从现有题库组合完整试卷，按真实机考方式练习。听力与学术阅读分别进行。" />
-    <div className="mock-list">{data.mockAvailability.map((item) => <article className="mock-card" key={item.section}><span className="mock-card-icon"><Icon name={item.section === "reading" ? "book" : "headphones"} /></span><div><h2>{item.section === "reading" ? "学术阅读" : "听力"} · 组合模拟卷</h2><p>{item.message}</p><span className="mock-count"><Icon name={item.ready ? "circle-check" : "time"} size={14} />{item.questions} / {item.expected} 道题</span></div><button className="button button-primary button-small" onClick={() => onStart(item.section)} disabled={!item.ready || busy}>{item.ready ? "进入考前准备" : "材料未齐"}</button></article>)}</div>
+    <div className="mock-list">{data.mockAvailability.map((item) => <article className="mock-card" key={item.section}><span className="mock-card-icon"><Icon name={item.section === "reading" ? "book" : "headphones"} /></span><div><h2>{item.section === "reading" ? "学术阅读" : "听力"} · 组合模拟卷</h2><p>{item.message}</p><span className="mock-count"><Icon name={item.ready ? "circle-check" : "time"} size={14} />{item.questions} / {item.expected} 道题</span></div><button className="button button-primary button-small" onClick={() => onStart(item.section)} disabled={!item.ready || busy}>{busy ? "准备中…" : item.ready ? "进入考前准备" : "材料未齐"}</button></article>)}</div>
     <p className="footer-note">组合模拟卷由独立分段材料组成。正式开考后倒计时持续运行，交卷后可查看答案与解析。</p>
   </div>;
 }
@@ -435,12 +465,12 @@ function LibraryPage({ section, data, onStart }: { section: "reading" | "listeni
     {!activities.length ? <div className="empty-state"><Icon name="file" /><h2>暂时没有可用的{sectionLabel[section]}练习</h2><p>新的练习内容准备好后会显示在这里。</p></div>
       : !filtered.length ? <div className="empty-state"><Icon name="search" /><h2>没有匹配的练习</h2><p>换个关键词，或把「{part === 0 ? "全部分段" : partLabel[section][part]}」与难度筛选切回「全部难度」。</p></div>
       : <>
-        <div className="library-list">{visible.map((item) => <article className="library-row" key={item.id}><span className="library-icon"><Icon name={section === "listening" ? "headphones" : "book"} /></span><div className="library-body"><h2 className="library-title"><span className="library-title-text" title={item.title}>{item.title}</span>{item.sample && <span className="sample-chip">原创演示</span>}</h2><p className="library-desc" title={item.description}>{item.description || "练习材料"}</p></div><div className="library-meta">{item.part && <span className="chip part-chip">{partLabel[section][item.part]}</span>}<span className="chip"><Icon name="time" size={13} />约 {item.minutes} 分钟</span><span className="chip"><Icon name="file" size={13} />{item.questions.length} 道题</span><span className="chip"><Icon name="gauge" size={13} />{difficultyLabel[item.difficulty]}</span></div><button className="button button-outline button-small" onClick={() => onStart(item.id)}>开始练习 <Icon name="arrow" size={14} /></button></article>)}</div>
+        <div className="library-list">{visible.map((item) => <article className="library-row" key={item.id}><span className="library-icon"><Icon name={section === "listening" ? "headphones" : "book"} /></span><div className="library-body"><h2 className="library-title"><span className="library-title-text" title={item.title}>{item.title}</span>{item.sample && <span className="sample-chip">原创演示</span>}</h2><p className="library-desc" title={item.description}>{item.description || "练习材料"}</p></div><div className="library-meta">{item.part && <span className="chip part-chip">{partLabel[section][item.part]}</span>}<span className="chip"><Icon name="time" size={13} />约 {item.minutes} 分钟</span><span className="chip"><Icon name="file" size={13} />{item.questionCount} 道题</span><span className="chip"><Icon name="gauge" size={13} />{difficultyLabel[item.difficulty]}</span></div><button className="button button-outline button-small" onClick={() => onStart(item.id)}>开始练习 <Icon name="arrow" size={14} /></button></article>)}</div>
         {filtered.length > limit && <div className="load-more"><button className="button button-soft" onClick={() => setLimit((value) => value + 20)}>加载更多（还有 {filtered.length - limit} 份）</button></div>}
       </>}
   </div>;
 }
-function ProfilePage({ data, onAttempt, busy }: { data: BootstrapData; onAttempt: (id: string) => void; busy: boolean }) {
+function ProfilePage({ data, onAttempt, busy, pendingAttempt }: { data: BootstrapData; onAttempt: (id: string) => void; busy: boolean; pendingAttempt: string }) {
   const total = data.attempts.reduce((sum, item) => sum + item.total, 0);
   const correct = data.attempts.reduce((sum, item) => sum + item.score, 0);
   return <div className="page-content"><PageHeader title="学习画像" subtitle="短练习保留原始答对数，不用少量题目猜测 Band 分数。重复的新题表现会逐步累积证据。" />
@@ -449,13 +479,12 @@ function ProfilePage({ data, onAttempt, busy }: { data: BootstrapData; onAttempt
       {data.evidence.length ? <div className="evidence-list">{data.evidence.map((item) => <article className="evidence-row" key={item.pluginId + ":" + item.skillTag}><strong>{data.skillLabels[item.skillTag] ?? item.skillTag}</strong><span>{sectionLabel[item.pluginId]} · 近 30 天独立答对 {item.recentIndependentCorrect ?? 0}/{item.recentIndependentSamples ?? 0} · 用提示 {item.recentHinted ?? 0}</span><div className="evidence-meter"><i style={{ width: percent(item.recentIndependentCorrect ?? 0, item.recentIndependentSamples ?? 0) + "%" }} /></div><span className="confidence">{item.evidenceStatus === "insufficient" ? "证据不足 · 需要基线练习" : confidenceText(item.confidence)}{item.userConfirmedCause ? " · " + item.userConfirmedCause : ""}</span></article>)}</div> : <div className="empty-callout"><Icon name="chart" /><div className="empty-callout-copy"><strong>先完成一次练习，画像才会开始形成</strong><p>一次结果只是线索；重复的新题表现才会提高判断把握。</p></div></div>}
     </section>
     <section className="profile-attempts"><div className="section-heading"><h2>最近练习</h2><span className="small-count">{data.attempts.length} 次已提交</span></div>
-      {data.attempts.length ? <div className="attempt-list">{data.attempts.map((item) => <div className="attempt-row" key={item.attemptId}><span>{sectionLabel[item.pluginId]} · {item.mode === "mock" ? "完整模考" : item.mode === "review" ? "错题复习" : "专项练习"} · {new Date(item.submittedAt).toLocaleString("zh-CN")}</span><strong className="attempt-result">{item.score} / {item.total}</strong><button type="button" className="text-action" onClick={() => onAttempt(item.attemptId)} disabled={busy}>查看复盘</button></div>)}</div> : <div className="empty-state compact-empty"><Icon name="file" /><h2>还没有提交的练习</h2><p>提交后会看到答案、提示使用情况和文章证据。</p></div>}
+      {data.attempts.length ? <div className="attempt-list">{data.attempts.map((item) => <div className="attempt-row" key={item.attemptId}><span>{sectionLabel[item.pluginId]} · {item.mode === "mock" ? "完整模考" : item.mode === "review" ? "错题复习" : "专项练习"} · {new Date(item.submittedAt).toLocaleString("zh-CN")}</span><strong className="attempt-result">{item.score} / {item.total}</strong><button type="button" className="text-action" onClick={() => onAttempt(item.attemptId)} disabled={busy}>{pendingAttempt === item.attemptId ? "打开中…" : "查看复盘"}</button></div>)}</div> : <div className="empty-state compact-empty"><Icon name="file" /><h2>还没有提交的练习</h2><p>提交后会看到答案、提示使用情况和文章证据。</p></div>}
     </section>
   </div>;
 }
 function DataStat({ label, value }: { label: string; value: string }) { return <div className="data-stat"><span>{label}</span><strong>{value}</strong></div>; }
 function confidenceText(value: "emerging" | "developing" | "established") { return value === "emerging" ? "观察中" : value === "developing" ? "有一些证据" : "多次观察"; }
-type GoalForm = { targetListening: number; targetReading: number; examDate: string; dailyMinutes: number };
 function ProfileForm({ value, busy, saved, error, onChange, onSubmit }: { value: GoalForm; busy: boolean; saved: boolean; error: string; onChange: (value: GoalForm) => void; onSubmit: (event: FormEvent) => void }) {
   const bands = Array.from({ length: 17 }, (_, index) => (index + 2) / 2);
   return <form className="profile-form-inner" onSubmit={onSubmit} aria-busy={busy}><fieldset className="profile-form-fields" disabled={busy}><div className="form-grid">
@@ -463,14 +492,15 @@ function ProfileForm({ value, busy, saved, error, onChange, onSubmit }: { value:
     <label className="field"><span>阅读目标分数</span><select className="input" value={value.targetReading} onChange={(event) => onChange({ ...value, targetReading: Number(event.target.value) })}>{bands.map((score) => <option key={score} value={score}>{score.toFixed(1)}</option>)}</select></label>
     <label className="field"><span>考试日期</span><input className="input" type="date" required value={value.examDate} onChange={(event) => onChange({ ...value, examDate: event.target.value })} /></label>
     <label className="field"><span>每日可投入时间</span><select className="input" value={value.dailyMinutes} onChange={(event) => onChange({ ...value, dailyMinutes: Number(event.target.value) })}>{[15, 20, 30, 45, 60, 90, 120, 180].map((minutes) => <option key={minutes} value={minutes}>{minutes} 分钟</option>)}</select></label>
-  </div></fieldset><div className="profile-form-actions"><p className={"profile-save-feedback" + (error ? " is-error" : "")} role={error ? "alert" : "status"}>{busy ? "正在保存目标，请稍候…" : error ? "保存未完成：" + error : saved ? "目标已保存。" : ""}</p><button type="submit" className="button button-primary" disabled={busy || saved}>{busy ? "保存中…" : saved ? "已保存" : "保存目标"} <Icon name={saved ? "circle-check" : "arrow"} size={15} /></button></div></form>;
+  </div></fieldset><div className="profile-form-actions"><p className={"profile-save-feedback" + (error ? " is-error" : "")} role={error ? "alert" : "status"}>{busy ? "正在保存目标，请稍候…" : error || (saved ? "目标已保存。" : "")}</p><button type="submit" className="button button-primary" disabled={busy || saved}>{busy ? "保存中…" : saved ? "已保存" : "保存目标"} <Icon name={saved ? "circle-check" : "arrow"} size={15} /></button></div></form>;
 }
 function SettingsPage({ data, busy, error, onSave, onLogout }: { data: BootstrapData; busy: boolean; error: string; onSave: (value: Omit<BootstrapData["profile"], "id" | "updatedAt">) => Promise<boolean>; onLogout: () => void }) {
-  const [form, setForm] = useState({ targetListening: data.profile.targetListening, targetReading: data.profile.targetReading, examDate: data.profile.examDate, dailyMinutes: data.profile.dailyMinutes });
-  const [saved, setSaved] = useState(false);
-  useEffect(() => setForm({ targetListening: data.profile.targetListening, targetReading: data.profile.targetReading, examDate: data.profile.examDate, dailyMinutes: data.profile.dailyMinutes }), [data.profile]);
+  const [{ value: form, saved }, updateForm] = useReducer(goalFormReducer, { value: data.profile, dirty: false, saved: false });
+  useEffect(() => {
+    updateForm({ type: "sync", value: data.profile });
+  }, [data.profile]);
   return <div className="page-content"><PageHeader title="设置" subtitle="调整备考目标和每天的学习节奏。" />
-    <section className="profile-form profile-edit"><div><h2>学习偏好</h2><p className="profile-note">这些设置会帮助我们安排适合你的练习时间。你可以随时调整。</p></div><ProfileForm value={form} busy={busy} saved={saved} error={error} onChange={(value) => { setForm(value); setSaved(false); }} onSubmit={(event) => { event.preventDefault(); if (!busy && !saved) void onSave({ ...form, setupComplete: true }).then(setSaved); }} /></section>
+    <section className="profile-form profile-edit"><div><h2>学习偏好</h2><p className="profile-note">这些设置会帮助我们安排适合你的练习时间。你可以随时调整。</p></div><ProfileForm value={form} busy={busy} saved={saved} error={error} onChange={(value) => updateForm({ type: "change", value })} onSubmit={(event) => { event.preventDefault(); if (!busy && !saved) void onSave({ ...form, setupComplete: true }).then((ok) => { if (ok) updateForm({ type: "saved", value: form }); }); }} /></section>
     <section className="profile-form profile-edit account-panel"><div><h2>演示账号</h2><p className="profile-note">所有使用演示密码登录的人会共用这一份学习记录。</p></div><button className="button button-soft" onClick={onLogout}>退出登录</button></section>
   </div>;
 }
@@ -553,8 +583,8 @@ function restoreExamView(root: HTMLElement, snapshot: ExamViewSnapshot): () => v
   };
 }
 
-function WorkspacePage({ session, plugin, skillLabels, busy, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted }: {
-  session: Session; plugin?: BootstrapData["plugins"][number]; skillLabels: Record<string, string>; busy: boolean; error: string; onBack: () => void; onAnswer: (answers: Record<string, string>) => void;
+function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted }: {
+  session: Session; plugin?: BootstrapData["plugins"][number]; skillLabels: Record<string, string>; busy: boolean; submitting: boolean; error: string; onBack: () => void; onAnswer: (answers: Record<string, string>) => void;
   onQuestion: (id: string) => void; onSubmit: (answers: Record<string, string>, questionTimeSeconds: Record<string, number>) => Promise<boolean>;
   onCoach: () => void; onCause: (qid: string, tag: string, cause: string) => Promise<boolean>; onAudioInterrupted: (reason: string) => void;
 }) {
@@ -886,6 +916,12 @@ function WorkspacePage({ session, plugin, skillLabels, busy, error, onBack, onAn
         {timeoutState === "failed" && <div className="exam-exit-actions"><button type="button" className="button button-primary" onClick={retryTimeoutSubmit}>重新提交</button></div>}
       </div>
     </div>}
+    {submitting && !result && timeoutState === "idle" && <div className="exam-exit-overlay" role="presentation">
+      <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label="Submitting answers">
+        <h2>Submitting…</h2>
+        <p>正在保存并提交答案，请稍候。</p>
+      </div>
+    </div>}
     {result && <ResultCauses session={session} onCause={onCause} onBack={onBack} busy={busy} saving={saving} />}
     {exitOpen && <div className="exam-exit-overlay" role="presentation" onClick={() => setExitOpen(false)}>
       <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label="Exit practice" onClick={(event) => event.stopPropagation()}>
@@ -924,11 +960,12 @@ function CausePicker({ response, question, index, onConfirm }: { response: Attem
   const [tag, setTag] = useState(question.skillTags[0] ?? "");
   const [cause, setCause] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const options = ["没定位到关键信息", "同义改写没识别出来", "忽略了范围或限定词", "听错了日期、数字或地点", "时间不够", "其他"];
   return <article className="cause-row"><div><strong>第 {index} 题 · {question.prompt}</strong><p>你的答案：{response.selected || "未作答"} · 参考答案：{response.correctAnswer}</p><p className="cause-evidence">依据：{response.evidence}</p></div><div className="cause-fields">
     <label className="field"><span>关联能力</span><select className="input" value={tag} onChange={(event) => setTag(event.target.value)}>{question.skillTags.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
     <label className="field"><span>我觉得错在</span><select className="input" value={cause} onChange={(event) => { setCause(event.target.value); setSaved(false); }}><option value="">选择一个原因</option>{options.map((item) => <option key={item}>{item}</option>)}</select></label>
-    <button className="button button-soft button-small" disabled={!cause || saved} onClick={() => void onConfirm(tag, cause).then(setSaved)}>{saved ? "已记下" : "确认错因"}</button>
+    <button className="button button-soft button-small" disabled={!cause || saved || saving} onClick={() => { setSaving(true); void onConfirm(tag, cause).then((ok) => { setSaving(false); if (ok) setSaved(true); }); }}>{saved ? "已记下" : saving ? "保存中…" : "确认错因"}</button>
   </div></article>;
 }
 function CoachDrawer({ activity, question, draft, result, data, lines, loading, error, failedMessage, onClose, onSend, onRetry }: {
@@ -952,7 +989,8 @@ function CoachDrawer({ activity, question, draft, result, data, lines, loading, 
       {contextOpen && <div className="coach-context-detail">模式：{result ? "已提交复盘" : draft.mode === "mock" ? "完整模考" : "练习中"}<br />当前任务：{task ? task.title + " · " + task.reason : "自主练习"}<br />目标：听力 {data.profile.targetListening.toFixed(1)}、阅读 {data.profile.targetReading.toFixed(1)} · 每日 {data.profile.dailyMinutes} 分钟<br />当前作答：{draft.answers[question.id] || "尚未作答"}<br />提示记录：{draft.hintedQuestionIds.length ? draft.hintedQuestionIds.length + " 道题用过提示" : "尚无提示记录"}<br />相关能力：{question.skillTags.map((item) => data.skillLabels[item] ?? item).join("、")}<br />历史相似错题：{priorErrors} 道<br />能力证据：{related.length ? related.map((item) => (data.skillLabels[item.skillTag] ?? item.skillTag) + " 独立答对 " + item.independent + "/" + item.total).join("；") : "还没有相关记录"}<br />本题结果：{response ? response.correct ? "答对" : "答错" : "尚未提交"}<br />材料片段：{source.slice(0, 360)}{source.length > 360 ? "…" : ""}</div>}
     </div>
     <div className="coach-intro">我会先看题目和你的作答记录，再一起找线索。你可以直接说卡住的地方。</div>
-    <div className="coach-messages" ref={list}>{lines.length ? lines.map((line) => <div className={"coach-message " + line.role} key={line.id}>{line.role === "assistant" && <span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span>}<div className="coach-bubble">{line.text}</div></div>) : <p className="coach-empty">“这题我该先看哪里？”<br />“这两个选项怎么区分？”</p>}
+    <div className="coach-messages" ref={list}>{lines.length ? lines.map((line) => <div className={"coach-message " + line.role} key={line.id}>{line.role === "assistant" && <span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span>}<div className="coach-bubble">{line.text}</div></div>) : loading ? <div className="coach-message assistant"><span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span><div className="coach-bubble">正在加载对话…</div></div> : <p className="coach-empty">“这题我该先看哪里？”<br />“这两个选项怎么区分？”</p>}
+      {loading && lines.length > 0 && <div className="coach-message assistant"><span className="coach-bot-mark"><Icon name="sparkle" size={14} /></span><div className="coach-bubble">正在组织回复…</div></div>}
       {!data.aiConfigured && <div className="coach-setup">学习导师暂时无法回复，请稍后再试。</div>}
       {response && !response.correct && <div className="coach-suggestions"><button className="suggestion-button" onClick={() => setSuggestion(true)}><Icon name="sparkle" size={14} />和我复盘这道错题</button></div>}
       {suggestion && <div className="coach-suggestions"><button className="suggestion-button" onClick={() => send("能结合这题的文章或录音证据，解释我可能错在哪里吗？")} disabled={!data.aiConfigured || loading}><Icon name="sparkle" size={14} />根据证据分析错因</button></div>}

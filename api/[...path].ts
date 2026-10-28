@@ -118,11 +118,6 @@ export default async function handler(request: VercelRequest, response: VercelRe
         return { stream: Readable.fromWeb(asset.stream as unknown as import("node:stream/web").ReadableStream<Uint8Array>), size: Number(asset.headers.get("content-length") ?? asset.blob.size), contentType: asset.blob.contentType, status: Number(asset.headers.get("content-range") ? 206 : 200), headers };
       },
     });
-    if (url.pathname === "/api/bootstrap" && request.method === "GET") {
-      const proposal = await store.planProposal();
-      if (proposal.status === "idle") await app.ensurePlan();
-      else if (proposal.status === "generating" && proposal.updatedAt && Date.now() - Date.parse(proposal.updatedAt) > 120_000) await app.ensurePlan(true);
-    }
     await app.handle(request, response);
     waitUntil(app.close().finally(() => client.end()));
   } catch (error) {
