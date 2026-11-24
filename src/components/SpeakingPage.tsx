@@ -3,40 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../services/api.js";
 import { SpeakingCall, type CallPhase } from "../services/speaking-call.js";
 import { parts } from "../services/speaking-topics.js";
-import { criteria, type SpeakingLine, type SpeakingPart, type SpeakingRecord, type SpeakingSummary } from "../shared/speaking.js";
+import type { SpeakingLine, SpeakingPart, SpeakingRecord, SpeakingSummary } from "../shared/speaking.js";
+import { SpeakingDemo } from "./SpeakingDemo.js";
+import { SpeakingReview, Transcript, dateLabel } from "./SpeakingReview.js";
 import { Icon } from "./Icon.js";
 
 const message = (error: unknown) => error instanceof Error ? error.message : "请求失败，请重试。";
 const phaseLabel: Record<CallPhase, string> = {
   connecting: "正在连接", preparing: "准备陈述", speaking: "通话中", reviewing: "正在生成复盘",
 };
-const dateLabel = (date: string) => new Date(date).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" });
-
-function Transcript({ lines }: { lines: SpeakingLine[] }) {
-  return <details className="speech-transcript"><summary>英文对话字幕</summary>
-    {lines.length ? <ol>{lines.map(line => <li key={line.id}><strong>{line.role === "examiner" ? "考官" : "你"}</strong><span lang="en">{line.text}</span></li>)}</ol> : <p>对话开始后会在这里显示字幕。</p>}
-  </details>;
-}
-
-function Review({ record }: { record: SpeakingRecord }) {
-  const feedback = record.feedback;
-  return <article className="speech-panel speech-review">
-    <header><p className="speech-meta">Part {record.part} · {dateLabel(record.endedAt)}</p><h2>{record.topic}</h2></header>
-    {feedback ? <>
-      <h3>下次先练这一点</h3><p>{feedback.advice}</p>
-      {feedback.quote && <blockquote lang="en"><small>你的原话</small>{feedback.quote}</blockquote>}
-      {feedback.revision && <blockquote lang="en"><small>可以这样说</small>{feedback.revision}</blockquote>}
-      <h3>AI 练习参考分</h3>
-      <dl className="speech-ratings">{(Object.keys(criteria) as (keyof typeof criteria)[]).map(key => {
-        const rating = feedback.criteria[key];
-        return <div key={key}><dt>{criteria[key]} <strong>{rating.band === null ? "证据不足" : rating.band.toFixed(1)}</strong></dt><dd>{rating.note}</dd></div>;
-      })}</dl>
-    </> : <p className="speech-meta">本次没有完整的模型反馈，可查看已确认的对话。</p>}
-    <Transcript lines={record.lines} />
-  </article>;
-}
-
 export function SpeakingPage() {
+  const [demo, setDemo] = useState(false);
   const [part, setPart] = useState<SpeakingPart>(1);
   const [topicIndex, setTopicIndex] = useState(0);
   const topic = parts[part].topics[topicIndex];
@@ -143,13 +120,14 @@ export function SpeakingPage() {
 
   const question = [...lines].reverse().find(line => line.role === "examiner")?.text || topic.prompt;
   const timed = phase === "preparing" || (part === 2 && phase === "speaking");
+  if (demo) return <SpeakingDemo part={part} topic={topic} onExit={() => setDemo(false)} />;
   return <section className="page-content speech-page">
     <header className="page-title-row"><div><h1>{record ? "口语复盘" : "口语练习"}</h1>
       <p className="page-subtitle">{record ? "回看这次练习和考官反馈。" : "与 AI 考官用英语对话，练完回看自己的表达。"}</p></div></header>
     <audio ref={audio} autoPlay />
     {error && <p className="speech-notice" role="alert">{error}</p>}
     {record ? <>
-      <Review record={record} />
+      <SpeakingReview record={record} />
       <div className="speech-actions">
         {unsaved && <button className="button button-primary" onClick={() => void save(record)}>重试保存</button>}
         <button className="button button-outline" disabled={saving || unsaved} onClick={() => { setRecord(undefined); setError(""); }}>返回口语练习</button>
@@ -168,6 +146,7 @@ export function SpeakingPage() {
             {parts[part].topics.map((entry, index) => <option key={entry.title} value={index}>{entry.title}</option>)}</select></label>
           <p className="speech-meta">{part === 2 && "准备 1 分钟，陈述最多 2 分钟。"}开始后将使用麦克风与百炼通话。共享档案保存文字复盘，录音不会保存。</p>
           <div className="speech-actions"><button className="button button-primary" disabled={!!configuration} onClick={start}><Icon name="mic" size={18} />开始练习</button>
+          <button className={"button " + (configuration ? "button-primary" : "button-outline")} onClick={() => { selection.current++; setError(""); setDemo(true); }}><Icon name="play" size={16} />播放口语演示</button>
           {configuration && <span className="speech-config" role="status">{configuration} <button className="speech-link" onClick={() => setLoadAttempt(n => n + 1)}>重新检查</button></span>}</div>
         </> : <>
           <div className="speech-signal"><div className="speech-wave" aria-hidden="true">
