@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PlanTask, PublicActivity, Section } from "./shared/domain.js";
 import { api, ApiError, setUnauthorizedHandler } from "./services/api.js";
 import { Icon, type IconName } from "./components/Icon.js";
+import { SpeakingPage } from "./components/SpeakingPage.js";
 import { LoginView } from "./components/LoginView.js";
 import { ExamPreparation, type Preparation } from "./components/ExamPreparation.js";
 
-type Page = "home" | "listening" | "reading" | "mock" | "review" | "profile" | "settings" | "workspace" | "preparation";
+type Page = "speaking" | "home" | "listening" | "reading" | "mock" | "review" | "profile" | "settings" | "workspace" | "preparation";
 type Session = { activity: PublicActivity; draft: AnswerDraft; result?: AttemptResult };
 type CoachLine = { role: "user" | "assistant"; text: string; id: string };
 const navItems: Array<{ page: Page; label: string; icon: IconName }> = [
   { page: "home", label: "今日学习", icon: "home" }, { page: "listening", label: "听力练习", icon: "headphones" },
-  { page: "reading", label: "阅读练习", icon: "book" }, { page: "mock", label: "完整模考", icon: "file" },
+  { page: "reading", label: "阅读练习", icon: "book" }, { page: "speaking", label: "口语练习", icon: "mic" },
+  { page: "mock", label: "完整模考", icon: "file" },
   { page: "review", label: "错题复习", icon: "repeat" }, { page: "profile", label: "学习画像", icon: "chart" },
   { page: "settings", label: "设置", icon: "settings" },
 ];
@@ -295,15 +297,16 @@ export function App() {
     <aside className="side-rail">
       <button className="rail-collapse" type="button" aria-label="收起侧边栏" title="收起侧边栏" onClick={toggleRail}><Icon name="caret" size={16} /></button>
       <div className="brand"><span className="brand-stamp"><Icon name="sparkle" size={18} /></span><span className="brand-name">暖学 IELTS</span></div>
-      <nav className="nav-list" aria-label="主要导航">{navItems.slice(0, 5).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { setPage(item.page); setCoachOpen(false); }} />)}</nav>
+      <nav className="nav-list" aria-label="主要导航">{navItems.slice(0, 6).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { setPage(item.page); setCoachOpen(false); }} />)}</nav>
       <div className="nav-spacer" /><div className="nav-divider" />
-      <nav className="nav-list" aria-label="学习记录与设置">{navItems.slice(5).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { setPage(item.page); setCoachOpen(false); }} />)}</nav>
+      <nav className="nav-list" aria-label="学习记录与设置">{navItems.slice(6).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { setPage(item.page); setCoachOpen(false); }} />)}</nav>
       <div className="local-note"><Icon name="lock" size={14} /><span>学习记录已保护</span></div>
     </aside>
     <main className="page-main" key={page}>
       {railHidden && <div className="rail-toolbar"><button className="rail-expand" type="button" aria-label="展开侧边栏" title="展开侧边栏" onClick={toggleRail}><Icon name="menu" size={18} /></button></div>}
       {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={setPage} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), setData)} onSetup={() => setPage("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
       {(page === "reading" || page === "listening") && <LibraryPage section={page} data={data} onStart={(id) => void startActivity(id)} />}
+      {page === "speaking" && <SpeakingPage />}
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
       {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} />}

@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 
-type IconName = "home" | "headphones" | "book" | "file" | "repeat" | "chart" | "settings" | "chat" | "check" | "arrow" | "lock" | "unlock" | "time" | "menu" | "upload" | "refresh" | "close" | "send" | "sparkle" | "play" | "volume" | "circle-check" | "search" | "filter" | "caret" | "gauge" | "wifi" | "note";
+type IconName = "mic" | "home" | "headphones" | "book" | "file" | "repeat" | "chart" | "settings" | "chat" | "check" | "arrow" | "lock" | "unlock" | "time" | "menu" | "upload" | "refresh" | "close" | "send" | "sparkle" | "play" | "volume" | "circle-check" | "search" | "filter" | "caret" | "gauge" | "wifi" | "note";
 
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></>,
+  mic: <><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></>,
   headphones: <><path d="M3 14v-3a9 9 0 0 1 18 0v3"/><path d="M5 13H3v6a2 2 0 0 0 2 2h2v-6H5zM19 13h2v6a2 2 0 0 1-2 2h-2v-6h2z"/></>,
   book: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22z"/><path d="M4 5.5V19a2 2 0 0 0 2 2h14"/></>,
   file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></>,

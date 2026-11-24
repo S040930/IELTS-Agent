@@ -1,3 +1,4 @@
+import type { SpeakingRecord, SpeakingSummary } from "../shared/speaking.js";
 import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PlanTask, PublicActivity, Section } from "../shared/domain.js";
 
 export class ApiError extends Error {
@@ -32,6 +33,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   serverNow,
+  speakingHistory: () => request<{ sessions: SpeakingSummary[]; configurationError: string | null }>("/api/speaking/sessions"),
+  speakingRecord: (id: string) => request<SpeakingRecord>("/api/speaking/sessions/" + encodeURIComponent(id)),
+  saveSpeaking: (record: SpeakingRecord) => request<{ id: string }>("/api/speaking/sessions", { method: "POST", body: JSON.stringify(record) }),
+  async speakingOffer(sdp: string, signal: AbortSignal): Promise<string> {
+    const response = await fetch("/api/speaking/sdp", { method: "POST", headers: { "content-type": "application/sdp" }, body: sdp, signal });
+    if (response.ok) return response.text();
+    if (response.status === 401) onUnauthorized?.();
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(body.error ?? "实时通话连接失败，请重试。", response.status);
+  },
   authSession: () => request<{ authenticated: boolean }>("/api/auth/session"),
   login: (password: string) => request<{ authenticated: boolean }>("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
   logout: () => request<{ authenticated: boolean }>("/api/auth/logout", { method: "POST", body: "{}" }),
