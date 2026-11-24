@@ -340,7 +340,8 @@ function HomePage({ data, today, tasks, onPage, onTask, onActivity, onLock, onSe
   const emptyTitle = data.planProposal.status === "generating" ? "AI 正在整理你的计划" : planFailed ? "暂时没有已确认的计划" : "先做一道短练习，计划会从这里开始";
   const emptyNote = planFailed ? "你仍可从题库自主选择练习；之后可以重试 AI 计划。" : "你可以先做一份阅读练习，计划会结合新的学习记录逐步形成。";
   return <div className="page-content">
-    <PageHeader title="今日学习" subtitle="今天先完成一小步，一项一项来。" actions={<span className="mode-pill"><Icon name="time" size={15} />{monthDay(today)}</span>} />
+    <PageHeader title="今日学习" actions={<span className="mode-pill"><Icon name="time" size={15} />{monthDay(today)}</span>} />
+    <div className="quick-links"><button className="quick-link" onClick={() => onPage("listening")}><span className="library-icon"><Icon name="headphones" /></span><span><strong>听力练习</strong><small>听取日期、地点与细节</small></span><Icon name="arrow" size={16} /></button><button className="quick-link" onClick={() => onPage("reading")}><span className="library-icon"><Icon name="book" /></span><span><strong>阅读练习</strong><small>定位依据与同义改写</small></span><Icon name="arrow" size={16} /></button><button className="quick-link" onClick={() => onPage("speaking")}><span className="library-icon"><Icon name="mic" /></span><span><strong>口语练习</strong><small>和 AI 考官实时对话</small></span><Icon name="arrow" size={16} /></button></div>
     {!data.profile.setupComplete && <section className="setup-message"><strong>先定一个适合自己的节奏</strong>告诉我目标分数、考试日期和每天能投入的时间，我会据此安排今天的练习。<div style={{ marginTop: 12 }}><button className="button button-outline button-small" onClick={onSetup}>设置学习目标 <Icon name="arrow" size={14} /></button></div></section>}
     <div className="plan-context"><div className="plan-context-copy"><span>{data.profile.dailyMinutes} 分钟 / 天</span><span className="context-dot" /><span>听力目标 {data.profile.targetListening.toFixed(1)}</span><span className="context-dot" /><span>阅读目标 {data.profile.targetReading.toFixed(1)}</span><span className="context-dot" /><span>{data.dueReviews} 道到期复习</span></div><span className="welcome-note">{data.profile.setupComplete ? "今天确认后保持固定；今天的新证据用于明日规划。" : "设置目标后，AI 会结合练习记录安排今天的题组。"}</span></div>
     <PlanProposalPanel proposal={data.planProposal} currentPlan={data.plan} today={today} dailyMinutes={data.profile.dailyMinutes} skillLabels={data.skillLabels} hasPlan={data.plan.some((task) => task.status !== "expired")} busy={busy} onConfirm={onConfirmProposal} onDismiss={onDismissProposal} onRetry={onRetryProposal} />
@@ -348,10 +349,8 @@ function HomePage({ data, today, tasks, onPage, onTask, onActivity, onLock, onSe
     <div className="task-list">{tasks.length ? tasks.map((task, index) => <TaskRow key={task.id} task={task} index={index} onStart={() => onTask(task)} onLock={() => onLock(task)} busy={busy} skillLabels={data.skillLabels} />) :
       <div className="empty-callout"><Icon name="sparkle" /><div className="empty-callout-copy"><strong>{emptyTitle}</strong><p>{emptyNote}</p></div><div className="empty-callout-actions"><button className="button button-primary button-small" onClick={() => firstReading ? onActivity(firstReading.id) : onPage("reading")}>开始阅读练习 <Icon name="arrow" size={14} /></button></div></div>}</div>
     <div className="home-lower">
-      <section className="home-lower-block"><h2>开始一项练习</h2><p>短练习的成绩只作为观察线索，不会换算成雅思分数。</p>
-        <div className="quick-links"><button className="quick-link" onClick={() => onPage("listening")}><span className="library-icon"><Icon name="headphones" /></span><span><strong>听力练习</strong><small>听取日期、地点与细节</small></span><Icon name="arrow" size={16} /></button><button className="quick-link" onClick={() => onPage("reading")}><span className="library-icon"><Icon name="book" /></span><span><strong>阅读练习</strong><small>定位依据与同义改写</small></span><Icon name="arrow" size={16} /></button></div>
-      </section>
-      <section className="home-lower-block"><h2>最近的学习记录</h2><p>分科保存原始正确题数，不根据少量题目猜测 Band 分数。</p>
+
+      <section className="home-lower-block"><h2>最近的听读记录</h2>
         {data.attempts.length ? <div className="attempt-list">{data.attempts.slice(0, 3).map((item) => <div className="attempt-row" key={item.attemptId}><span>{sectionLabel[item.pluginId]} · {new Date(item.submittedAt).toLocaleDateString("zh-CN")}</span><strong className="attempt-result">{item.score} / {item.total}</strong></div>)}</div> : <div className="empty-state compact-empty"><Icon name="chart" /><h2>完成第一次练习后，这里会留下记录</h2><p>画像会逐步累积新题表现，不只看一次分数。累计 {answered}/{total}。</p></div>}
       </section>
     </div>

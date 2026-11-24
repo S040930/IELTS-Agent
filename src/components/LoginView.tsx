@@ -12,9 +12,8 @@ export function LoginView({ onLogin }: { onLogin: (password: string) => Promise<
   }
   return <main className="login-page"><section className="login-card">
     <div className="login-mark" aria-hidden="true">IELTS</div>
-    <p className="login-eyebrow">给自己一点时间，慢慢进步</p>
     <h1>欢迎回到暖学</h1>
-    <p className="login-copy">输入演示密码，继续你的听力与阅读学习。</p>
+    <p className="login-copy">输入演示密码，继续听力、阅读与口语练习。</p>
     <form onSubmit={(event) => void submit(event)}>
       <label className="field"><span>演示密码</span><input autoComplete="current-password" className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoFocus /></label>
       {error && <p className="login-error" role="alert">{error}</p>}

@@ -7,7 +7,7 @@
 .speech-meta, .speech-config, .speech-transcript p { color: var(--muted); font-size: 14px; }
 .speech-meta { margin: 4px 0 12px; }
 .speech-question { max-width: 34em; margin: 20px 0; font-size: clamp(21px, 3vw, 32px); font-weight: 530; line-height: 1.32; letter-spacing: -.025em; }
-.speech-cues { padding-left: 22px; }
+.speech-cues { display: grid; gap: 5px; margin: 0 0 18px; padding: 14px 20px 14px 36px; border-left: 2px solid var(--accent-wash); color: var(--subtle-ink); line-height: 1.45; }
 .speech-segments { display: inline-flex; max-width: 100%; padding: 4px; margin-bottom: 18px; border-radius: 14px; background: var(--surface-2); }
 .speech-segments button { display: grid; gap: 2px; min-width: 0; padding: 7px clamp(8px, 3vw, 28px); border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
 .speech-segments span { font-size: 12px; }
@@ -21,8 +21,8 @@
 .speech-history li + li, .speech-transcript li + li { border-top: 1px solid var(--line); }
 .speech-history button { display: flex; gap: 12px; align-items: center; width: 100%; padding: 16px; text-align: left; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
 .speech-history small { margin-left: auto; color: var(--muted); }
-.speech-signal { color: var(--accent-ink); }
-.speech-wave { height: 42px; display: inline-flex; align-items: center; gap: 3px; }
+.speech-signal { justify-content: center; flex-direction: column; min-height: 146px; margin: 18px 0; border-radius: var(--radius-md); background: radial-gradient(ellipse at center, var(--accent-tint), var(--surface) 70%); color: var(--accent-ink); }
+.speech-wave { height: 52px; display: inline-flex; align-items: center; gap: 4px; }
 .speech-wave i { display: block; width: 5px; height: 100%; border-radius: 4px; background: currentColor; transition: transform 150ms linear; }
 .speech-clock { font-variant-numeric: tabular-nums; color: var(--accent-ink); }
 .speech-transcript { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 16px; }
@@ -36,3 +36,8 @@
 .speech-ratings div { padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
 .speech-ratings strong { color: var(--accent-ink); }
 .speech-ratings dd { margin: 8px 0 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .speech-wave i { transform: scaleY(.26) !important; }
+  .speech-wave i:nth-child(2n) { transform: scaleY(.4) !important; }
+}
