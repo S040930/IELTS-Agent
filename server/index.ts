@@ -1,3 +1,5 @@
+import { parseSpeakingRecord } from "../src/shared/speaking.js";
+import { exchangeSpeakingOffer, speakingConfigurationError } from "./services/speaking.js";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { HttpError, errorResponse } from "./http-error.js";
@@ -280,6 +282,29 @@ export async function createApp(options: ServerOptions = {}): Promise<{
     const path = parsed.pathname;
     const method = req.method ?? "GET";
 
+    if (path === "/api/speaking/sdp" && method === "POST") {
+      const answer = await exchangeSpeakingOffer(req);
+      res.writeHead(200, { "content-type": "application/sdp", "cache-control": "no-store" });
+      res.end(answer);
+      return;
+    }
+    if (path === "/api/speaking/sessions" && method === "GET") {
+      sendJson(res, 200, { sessions: await store.speakingHistory(), configurationError: speakingConfigurationError() });
+      return;
+    }
+    if (path === "/api/speaking/sessions" && method === "POST") {
+      const record = parseSpeakingRecord(await readJson(req));
+      if (!record) throw new HttpError("口语复盘格式无效。");
+      await store.saveSpeaking(record);
+      sendJson(res, 200, { id: record.id });
+      return;
+    }
+    if (path.startsWith("/api/speaking/sessions/") && method === "GET") {
+      const record = await store.speakingRecord(path.slice("/api/speaking/sessions/".length));
+      if (!record) throw new HttpError("找不到这次口语练习。", 404);
+      sendJson(res, 200, record);
+      return;
+    }
     if (path === "/api/health" && method === "GET") {
       sendJson(res, 200, { ok: true, node: process.versions.node, sqlite: true });
       return;

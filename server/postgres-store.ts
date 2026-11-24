@@ -1,3 +1,4 @@
+import type { SpeakingRecord, SpeakingSummary } from "../src/shared/speaking.js";
 import { randomUUID } from "node:crypto";
 import type { Client } from "@neondatabase/serverless";
 import type {
@@ -19,6 +20,21 @@ const parse = <T>(value: unknown, fallback: T): T => {
 const bool = (value: unknown) => value === true || value === 1 || value === "1";
 
 export class PostgresLearningStore implements LearningRepository {
+  async saveSpeaking(record: SpeakingRecord): Promise<void> {
+    await this.client.query(`INSERT INTO speaking_sessions (id, part, topic, ended_at, record_json)
+      VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`, [record.id, record.part, record.topic, record.endedAt, JSON.stringify(record)]);
+  }
+
+  async speakingHistory(): Promise<SpeakingSummary[]> {
+    const result = await this.client.query('SELECT id, part, topic, ended_at AS "endedAt" FROM speaking_sessions ORDER BY ended_at DESC, id');
+    return result.rows as SpeakingSummary[];
+  }
+
+  async speakingRecord(id: string): Promise<SpeakingRecord | undefined> {
+    const row = await this.one("SELECT record_json FROM speaking_sessions WHERE id=$1", [id]);
+    return row ? JSON.parse(String(row.record_json)) : undefined;
+  }
+
   constructor(private readonly client: QueryClient) {}
 
   async initialize(): Promise<void> {
@@ -47,6 +63,10 @@ export class PostgresLearningStore implements LearningRepository {
         submitted_at TEXT NOT NULL, score INTEGER NOT NULL, total INTEGER NOT NULL,
         responses_json TEXT NOT NULL, sample BOOLEAN NOT NULL, question_time_seconds_json TEXT NOT NULL DEFAULT '{}'
       );
+      CREATE TABLE IF NOT EXISTS speaking_sessions (
+        id TEXT PRIMARY KEY, part INTEGER NOT NULL, topic TEXT NOT NULL, ended_at TEXT NOT NULL, record_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS speaking_recent ON speaking_sessions(ended_at);
       CREATE TABLE IF NOT EXISTS causes (
         id TEXT PRIMARY KEY, attempt_id TEXT NOT NULL, question_id TEXT NOT NULL,
         skill_tag TEXT NOT NULL, cause TEXT NOT NULL, confirmed_at TEXT NOT NULL

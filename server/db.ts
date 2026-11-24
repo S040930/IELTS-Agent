@@ -1,3 +1,4 @@
+import type { SpeakingRecord, SpeakingSummary } from "../src/shared/speaking.js";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -61,6 +62,20 @@ type AttemptRow = {
 export class LearningStore {
   readonly database: DatabaseSync;
 
+  saveSpeaking(record: SpeakingRecord): void {
+    this.database.prepare(`INSERT INTO speaking_sessions (id, part, topic, ended_at, record_json)
+      VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`).run(record.id, record.part, record.topic, record.endedAt, JSON.stringify(record));
+  }
+
+  speakingHistory(): SpeakingSummary[] {
+    return this.database.prepare('SELECT id, part, topic, ended_at AS "endedAt" FROM speaking_sessions ORDER BY ended_at DESC, id').all() as unknown as SpeakingSummary[];
+  }
+
+  speakingRecord(id: string): SpeakingRecord | undefined {
+    const row = this.database.prepare("SELECT record_json FROM speaking_sessions WHERE id=?").get(id);
+    return row ? JSON.parse(String(row.record_json)) : undefined;
+  }
+
   constructor(databasePath: string) {
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new DatabaseSync(databasePath);
@@ -87,6 +102,10 @@ export class LearningStore {
         submitted_at TEXT NOT NULL, score INTEGER NOT NULL, total INTEGER NOT NULL,
         responses_json TEXT NOT NULL, sample INTEGER NOT NULL, question_time_seconds_json TEXT NOT NULL DEFAULT '{}'
       );
+      CREATE TABLE IF NOT EXISTS speaking_sessions (
+        id TEXT PRIMARY KEY, part INTEGER NOT NULL, topic TEXT NOT NULL, ended_at TEXT NOT NULL, record_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS speaking_recent ON speaking_sessions(ended_at);
       CREATE TABLE IF NOT EXISTS causes (
         id TEXT PRIMARY KEY, attempt_id TEXT NOT NULL, question_id TEXT NOT NULL,
         skill_tag TEXT NOT NULL, cause TEXT NOT NULL, confirmed_at TEXT NOT NULL

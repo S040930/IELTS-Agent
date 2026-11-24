@@ -24,3 +24,16 @@
 - [docs/plugins.md](docs/plugins.md)：插件 SDK 和生命周期。
 - [docs/content-package.md](docs/content-package.md)：题库包结构和本机安装。
 - [docs/learning-system.md](docs/learning-system.md)：画像、计划、复习和本机数据。
+
+## 实时口语练习
+
+本机在项目根目录的 `.env` 设置以下两项。Vercel 使用同名的服务端环境变量，修改后重新部署。口语和文字 AI 导师分别配置。
+
+```dotenv
+DASHSCOPE_API_KEY=你的百炼密钥
+IELTS_REALTIME_HOST=你的业务空间ID.cn-beijing.maas.aliyuncs.com
+```
+
+从百炼控制台复制与密钥同地域的业务空间域名（北京或新加坡），并开通 `qwen3.8-omni-flash-realtime`。通过 HTTPS 或本机 localhost / 127.0.0.1 打开网页并允许麦克风。后端为浏览器转发 SDP 握手，浏览器与模型直接交换音频。历史复盘在当前共享学习档案中对登录者可见，应用只保存文字。
+
+接入协议和地域域名见[百炼 WebRTC 接入文档](https://help.aliyun.com/zh/model-studio/omni-realtime-webrtc-access)。
