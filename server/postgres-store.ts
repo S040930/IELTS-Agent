@@ -128,7 +128,6 @@ export class PostgresLearningStore implements LearningRepository {
     return (await this.client.query(sql, params)).rows as Row[];
   }
   private async one(sql: string, params: unknown[] = []): Promise<Row | undefined> { return (await this.rows(sql, params))[0]; }
-  private examDate(): string { return new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10); }
   private profileFrom(row: Row): LearnerProfile {
     return { id: String(row.id), targetListening: Number(row.target_listening), targetReading: Number(row.target_reading), examDate: String(row.exam_date), dailyMinutes: Number(row.daily_minutes), updatedAt: String(row.updated_at), setupComplete: bool(row.setup_complete) };
   }
@@ -168,8 +167,6 @@ export class PostgresLearningStore implements LearningRepository {
       return activities.length;
     } catch (error) { await this.client.query("ROLLBACK"); throw error; }
   }
-  activityById(activities: Activity[], activityId: string): Activity | undefined { return activities.find((activity) => activity.id === activityId); }
-
   async saveMockPaper(activity: Activity): Promise<void> {
     await this.client.query("INSERT INTO mock_papers (id, activity_json, created_at) VALUES ($1, $2, $3)", [activity.id, JSON.stringify(activity), now()]);
   }
@@ -397,9 +394,6 @@ export class PostgresLearningStore implements LearningRepository {
   async reviews(today = this.today()): Promise<Array<{ questionId: string; activityId: string; pluginId: Section; dueDate: string; lastResult: string; streak: number }>> {
     return (await this.rows("SELECT question_id AS \"questionId\", activity_id AS \"activityId\", plugin_id AS \"pluginId\", due_date AS \"dueDate\", last_result AS \"lastResult\", streak FROM review_schedule WHERE due_date <= $1 ORDER BY due_date", [today])).map((row) => ({ questionId: String(row.questionId), activityId: String(row.activityId), pluginId: row.pluginId as Section, dueDate: String(row.dueDate), lastResult: String(row.lastResult), streak: Number(row.streak) }));
   }
-  async reviewsForActivity(activityId: string, today = this.today()): Promise<Array<{ questionId: string; dueDate: string; lastResult: string }>> {
-    return (await this.rows("SELECT question_id AS \"questionId\", due_date AS \"dueDate\", last_result AS \"lastResult\" FROM review_schedule WHERE activity_id=$1 AND due_date <= $2 ORDER BY due_date LIMIT 10", [activityId, today])).map((row) => ({ questionId: String(row.questionId), dueDate: String(row.dueDate), lastResult: String(row.lastResult) }));
-  }
   async dueReviewCount(): Promise<number> { const row = await this.one("SELECT COUNT(*) AS count FROM review_schedule WHERE due_date <= $1", [this.today()]); return Number(row?.count ?? 0); }
   async savePlan(tasks: PlanTask[], revision: string): Promise<void> {
     await this.client.query("BEGIN");
@@ -429,7 +423,6 @@ export class PostgresLearningStore implements LearningRepository {
       FROM plan_tasks WHERE date < $1 AND status='pending' ORDER BY date,id LIMIT 80`, [today]);
     return rows.map((row) => ({ id:String(row.id),date:String(row.date),activityId:String(row.activityId),pluginId:row.pluginId as Section,kind:row.kind as PlanTask["kind"],title:String(row.title),description:String(row.description),minutes:Number(row.minutes),reason:String(row.reason),reviewQuestionIds:parse(row.reviewQuestionIdsJson,[] as string[]),questionIds:parse(row.questionIdsJson,[] as string[]),focusSkillTag:row.focusSkillTag ? String(row.focusSkillTag) : undefined,questionKind:row.questionKind as PlanTask["questionKind"],locked:bool(row.locked),status:row.status as PlanTask["status"] }));
   }
-  async clearUnlockedPendingPlan(today = this.today()): Promise<void> { await this.client.query("DELETE FROM plan_tasks WHERE date >= $1 AND locked=FALSE AND status='pending'", [today]); }
   async planProposal(): Promise<PlanProposal & { inputRevision?: string }> {
     const row = await this.one(`SELECT id,status,input_revision AS \"inputRevision\",tasks_json AS \"tasksJson\",changes_json AS \"changesJson\",error,updated_at AS \"updatedAt\",plan_date AS \"planDate\" FROM plan_proposals WHERE singleton=1`);
     if (!row) return { status: "idle", changes: [] };
@@ -463,10 +456,6 @@ export class PostgresLearningStore implements LearningRepository {
   async completePlanProposal(id: string, tasks: PlanTask[], changes: PlanProposalChange[]): Promise<boolean> {
     const result = await this.client.query(`UPDATE plan_proposals SET status='ready',tasks_json=$1,changes_json=$2,error=NULL,updated_at=$3 WHERE singleton=1 AND id=$4 AND status='generating'`, [JSON.stringify(tasks),JSON.stringify(changes),now(),id]);
     return result.rowCount === 1;
-  }
-  async planProposalTasks(id: string): Promise<PlanTask[] | undefined> {
-    const row = await this.one("SELECT tasks_json FROM plan_proposals WHERE singleton=1 AND id=$1 AND status='ready'", [id]);
-    return row ? parse(row.tasks_json, [] as PlanTask[]) : undefined;
   }
   async failPlanProposal(id: string, message: string): Promise<boolean> {
     const result = await this.client.query(`UPDATE plan_proposals SET status='failed',error=$1,updated_at=$2 WHERE singleton=1 AND id=$3 AND status='generating'`, [message.slice(0,240),now(),id]); return result.rowCount === 1;

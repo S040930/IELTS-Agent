@@ -1,4 +1,4 @@
-import type { Activity, PluginManifest, Question, QuestionResult, Section } from "../../src/shared/domain.js";
+import type { Activity, PluginManifest, Question, QuestionResult } from "../../src/shared/domain.js";
 
 export interface LearnerSnapshot {
   activity: Pick<Activity, "id" | "pluginId" | "title" | "description">;
@@ -21,7 +21,4 @@ export interface PluginHost {
   registerHintStrategy(strategy: (question: Question, activity: Activity) => string): void;
   registerSkillTags(tags: Record<string, string>): void;
 }
-
-export type PluginActivation = (host: PluginHost) => void | Promise<void>;
-export type SectionId = Section;
 

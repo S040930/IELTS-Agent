@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { activitySummary, type ActivityMode, type ActivitySummary, type AnswerDraft, type AttemptResult, type BootstrapData, type CoachMessage, type PlanTask, type PublicActivity, type Section } from "./shared/domain.js";
+import { activitySummary, type ActivityMode, type AnswerDraft, type AttemptResult, type BootstrapData, type CoachMessage, type PlanTask, type PublicActivity, type Section } from "./shared/domain.js";
 import { api, ApiError, setUnauthorizedHandler } from "./services/api.js";
 import { startPlanPolling } from "./services/plan-polling.js";
 import { goalFormReducer, type GoalForm } from "./services/goal-form.js";

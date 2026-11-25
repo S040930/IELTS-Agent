@@ -34,17 +34,14 @@
   .app-frame.coach-open .page-main { margin-right: 0; }
   .page-content { padding: 34px 26px 72px; }
   .coach-drawer { width: min(390px, 92vw); box-shadow: var(--shadow-md); }
-  .coach-toggle { right: 19px; bottom: 18px; width: 56px; height: 56px; }
   .cause-row { grid-template-columns: 1fr; gap: 12px; }
   .cause-fields { grid-template-columns: 1fr 1fr; }
   .cause-fields .button { grid-column: 2; justify-self: end; }
   .library-row { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; }
   .library-meta { grid-column: 2; grid-row: 2; justify-content: flex-start; max-width: none; }
   .library-row > .button { grid-column: 3; grid-row: 1; }
-  .loading-shell { grid-template-columns: var(--rail) minmax(0, 1fr); }
   .skeleton-brand { width: 32px; }
   .skeleton-main { padding: 34px 26px; }
-  .loading-caption { left: var(--rail); }
   /* 机考面：单列，文章限高，题号条落底横滚 */
   .workspace-content.exam-mode { height: auto; min-height: 100vh; padding: 10px 12px 14px; overflow: visible; }
   .exam-mode .practice-host { flex: none; }
@@ -121,8 +118,6 @@
   .cause-fields { grid-template-columns: 1fr; }
   .cause-fields .button { grid-column: auto; justify-self: start; }
   .toast-region { right: 14px; bottom: 96px; }
-  .loading-shell { grid-template-columns: var(--rail) minmax(0, 1fr); }
-  .loading-caption { left: var(--rail); }
   /* 机考面：触控目标放大 */
   .exam-bar { flex-wrap: wrap; row-gap: 7px; }
   .exam-bar-right { flex-wrap: wrap; row-gap: 6px; }

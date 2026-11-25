@@ -1,6 +1,6 @@
 import type { SpeakingRecord, SpeakingSummary } from "../src/shared/speaking.js";
 import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
   Activity,
@@ -197,8 +197,6 @@ export class LearningStore {
       throw error;
     }
   }
-
-  activityById(activities: Activity[], activityId: string): Activity | undefined { return activities.find((item) => item.id === activityId); }
 
   saveMockPaper(activity: Activity): void {
     this.database.prepare("INSERT INTO mock_papers (id, activity_json, created_at) VALUES (?, ?, ?)").run(activity.id, JSON.stringify(activity), utcNow());
@@ -456,11 +454,6 @@ export class LearningStore {
     return this.database.prepare("SELECT question_id AS questionId, activity_id AS activityId, plugin_id AS pluginId, due_date AS dueDate, last_result AS lastResult, streak FROM review_schedule WHERE due_date<=? ORDER BY due_date").all(today) as Array<{ questionId: string; activityId: string; pluginId: Section; dueDate: string; lastResult: string; streak: number }>;
   }
 
-  reviewsForActivity(activityId: string, today = this.today()): Array<{ questionId: string; dueDate: string; lastResult: string }> {
-    return this.database.prepare("SELECT question_id AS questionId, due_date AS dueDate, last_result AS lastResult FROM review_schedule WHERE activity_id=? AND due_date<=? ORDER BY due_date LIMIT 10")
-      .all(activityId, today) as Array<{ questionId: string; dueDate: string; lastResult: string }>;
-  }
-
   dueReviewCount(): number {
     return Number((this.database.prepare("SELECT COUNT(*) AS count FROM review_schedule WHERE due_date<=?").get(this.today()) as { count: number }).count);
   }
@@ -499,10 +492,6 @@ export class LearningStore {
     return this.planRows(`SELECT id,date,activity_id AS activityId,plugin_id AS pluginId,kind,title,description,minutes,reason,
       review_question_ids_json AS reviewQuestionIdsJson,question_ids_json AS questionIdsJson,focus_skill_tag AS focusSkillTag,question_kind AS questionKind,locked,status
       FROM plan_tasks WHERE date<? AND status='pending' ORDER BY date,id LIMIT 80`, today);
-  }
-
-  clearUnlockedPendingPlan(today = this.today()): void {
-    this.database.prepare("DELETE FROM plan_tasks WHERE date>=? AND locked=0 AND status='pending'").run(today);
   }
 
   planProposal(): PlanProposal & { inputRevision?: string } {
@@ -559,11 +548,6 @@ export class LearningStore {
       WHERE singleton=1 AND id=? AND status='generating'`)
       .run(JSON.stringify(tasks), JSON.stringify(changes), utcNow(), id);
     return Number(result.changes) === 1;
-  }
-
-  planProposalTasks(id: string): PlanTask[] | undefined {
-    const row = this.database.prepare("SELECT tasks_json AS tasksJson FROM plan_proposals WHERE singleton=1 AND id=? AND status='ready'").get(id) as { tasksJson: string } | undefined;
-    return row ? parse(row.tasksJson, [] as PlanTask[]) : undefined;
   }
 
   failPlanProposal(id: string, message: string): boolean {

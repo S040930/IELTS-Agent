@@ -101,7 +101,6 @@
 .exam-section-option { position: relative; display: inline-flex; min-width: 76px; height: 100%; align-items: center; justify-content: center; padding: 0 13px; color: #656565; font-size: 13px; font-weight: 500; white-space: nowrap; }
 .exam-section-option.is-active { color: #171717; font-weight: 650; }
 .exam-section-option.is-active::after { position: absolute; right: 12px; bottom: 0; left: 12px; height: 2px; background: #242424; content: ""; }
-.exam-section-option.is-unavailable { color: #a3a3a3; cursor: not-allowed; }
 .app-frame.exam-active .exam-bar-title { min-width: 0; flex: 1 1 auto; overflow: hidden; color: #242424; font-family: inherit; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .exam-tools-menu { position: relative; z-index: 25; flex: 0 0 auto; }
 .exam-tools-menu > summary { display: flex; width: 58px; height: 56px; min-width: 58px; min-height: 56px; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border: 0; border-radius: 0; background: #fff; color: #292929; font-size: 10px; line-height: 1; cursor: pointer; list-style: none; }
@@ -109,19 +108,13 @@
 .exam-tools-menu > summary::after { display: none; content: none; }
 .exam-tools-menu > summary span { font-size: 10px; }
 .exam-tools-menu > summary:hover,
-.exam-tools-menu[open] > summary,
-.exam-header-note:hover { background: #f2f2f2; }
-.exam-tools-menu > summary:focus-visible,
-.exam-header-note:focus-visible { outline: 2px solid #1f6387; outline-offset: -3px; }
+.exam-tools-menu[open] > summary { background: #f2f2f2; }
+.exam-tools-menu > summary:focus-visible { outline: 2px solid #1f6387; outline-offset: -3px; }
 .exam-tools-popover { position: absolute; top: calc(100% + 1px); right: 5px; display: grid; min-width: 190px; padding: 5px; border: 1px solid #d4d4d4; border-radius: 4px; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
 .exam-tools-popover button { min-height: 38px; padding: 0 10px; border: 0; border-radius: 3px; background: transparent; color: #222; text-align: left; cursor: pointer; }
 .exam-tools-popover button:hover { background: #f1f3f4; }
 .app-frame.exam-active .exam-clock { min-width: 70px; height: 36px; margin-right: 2px; padding: 5px 9px; border-color: transparent; border-radius: 2px; background: #f3f3f3; font-size: 17px; }
-.exam-header-note { display: grid; width: 56px; height: 56px; flex: 0 0 56px; place-items: center; padding: 0; border: 0; background: #fff; color: #292929; cursor: pointer; }
-.app-frame.exam-active .mock-banner,
-.app-frame.exam-active .notice { flex: 0 0 auto; margin: 7px 24px 0; }
-.app-frame.exam-active .mock-banner { padding: 7px 10px; font-size: 12px; }
-.app-frame.exam-active .notice { padding: 7px 10px; font-size: 12px; }
+.app-frame.exam-active .notice { flex: 0 0 auto; margin: 7px 24px 0; padding: 7px 10px; font-size: 12px; }
 .app-frame.exam-active .practice-host { min-height: 0; padding: 0; }
 .app-frame.exam-active .exam-shell { gap: 0; }
 .app-frame.exam-active .exam-part-strip {
@@ -134,7 +127,6 @@
   background: #f2f3f0;
 }
 .app-frame.exam-active .exam-part-title { font-size: 16px; }
-.app-frame.exam-active .exam-part-range { font-size: 15px; }
 .app-frame.exam-active .exam-part-inst { margin-top: 0; color: #252525; font-size: 16px; line-height: 24px; }
 .app-frame.exam-active .exam-part-right { gap: 9px; }
 .app-frame.exam-active .exam-part-expand { width: 38px; height: 38px; border-color: #333; border-radius: 2px; color: #333; }
@@ -310,8 +302,6 @@
   .app-frame.exam-active .exam-part-title { font-size: 15px; }
   .app-frame.exam-active .exam-part-inst { font-size: 12px; }
   .app-frame.exam-active .exam-part-right { gap: 5px; }
-  .app-frame.exam-active .exam-estimate,
-  .app-frame.exam-active .exam-mode-chip { display: none; }
   .app-frame.exam-active .exam-audio-bar { margin: 0 10px 7px; gap: 7px; }
   .app-frame.exam-active .exam-mode .practice-host,
   .app-frame.exam-active .exam-shell,

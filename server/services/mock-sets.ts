@@ -1,5 +1,5 @@
-import { randomInt, randomUUID } from "node:crypto";
-import type { Activity, ExamTiming, MockAvailability, Section } from "../../src/shared/domain.js";
+import { randomInt } from "node:crypto";
+import type { Activity, ExamTiming, MockAvailability } from "../../src/shared/domain.js";
 
 const paperInstructions = /(?:ten|10)\s+minutes?[\s\S]{0,120}(?:transfer|answer\s*sheet)|transfer[\s\S]{0,80}(?:ten|10)\s+minutes?/i;
 
@@ -73,9 +73,4 @@ export function mockTiming(activity: Activity, durations: unknown): ExamTiming {
   return { durationSeconds: durations.reduce((sum: number, value: number) => sum + value, 120), audioDurationsSeconds: durations };
 }
 
-export function mockDraftPluginId(activityId: string): Section | undefined {
-  const [, section] = activityId.split(":");
-  return section === "reading" || section === "listening" ? section : undefined;
-}
 export function isMockActivityId(activityId: string): boolean { return activityId.startsWith("fullmock:"); }
-export function makeAttemptId(): string { return randomUUID(); }

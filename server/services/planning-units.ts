@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Activity, PlanTask, Question, QuestionKind, ReviewItem, Section, SkillEvidence } from "../../src/shared/domain.js";
+import type { Activity, PlanTask, Question, QuestionKind, ReviewItem, SkillEvidence } from "../../src/shared/domain.js";
 
 export interface QuestionTimingSample {
   questionId: string;
@@ -208,13 +208,3 @@ export function buildPlanningUnits(input: {
   }
   return units.sort((a, b) => a.pluginId.localeCompare(b.pluginId) || a.title.localeCompare(b.title) || a.questionKind.localeCompare(b.questionKind) || a.focusSkillTag.localeCompare(b.focusSkillTag));
 }
-
-export function questionGroupsAreWhole(activity: Activity, questionIds: string[]): boolean {
-  try { expandQuestionGroups(activity, questionIds); return true; } catch { return false; }
-}
-
-export function validateSelectedQuestionIds(activity: Activity, questionIds: string[]): string[] {
-  return expandQuestionGroups(activity, questionIds);
-}
-
-export type PlanningSection = Extract<Section, "reading" | "listening">;

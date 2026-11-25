@@ -1,6 +1,6 @@
 import type { SpeakingRecord, SpeakingSummary } from "../shared/speaking.js";
 import { isBootstrapData, isProposalResponse } from "./response-validation.js";
-import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PlanTask, PublicActivity, Section } from "../shared/domain.js";
+import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PublicActivity } from "../shared/domain.js";
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly applied = false) {
@@ -102,11 +102,8 @@ export const api = {
   confirmCause: (attemptId: string, questionId: string, skillTag: string, cause: string) => bootstrapRequest("/api/attempts/" + attemptId + "/cause", { method: "POST", body: JSON.stringify({ questionId, skillTag, cause }) }),
   askCoach: (conversationId: string, activityId: string, questionId: string, attemptId: string | undefined, message: string) => request<{ message: CoachMessage }>("/api/coach", { method: "POST", body: JSON.stringify({ conversationId, activityId, questionId, attemptId, message }) }, undefined, COACH_DEADLINE_MS),
   coachHistory: (conversationId: string) => request<{ messages: CoachMessage[] }>("/api/coach/history?conversationId=" + encodeURIComponent(conversationId)),
-  mockMaterials: () => request<{ sets: BootstrapData["mockAvailability"] }>("/api/mock/available"),
   markInterrupted: (attemptId: string, reason: string) => {
     void fetch("/api/attempts/" + attemptId + "/interrupt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }), keepalive: true }).catch(() => undefined);
   },
   abandonAttempt: (attemptId: string) => request<{ ok: true }>("/api/attempts/" + encodeURIComponent(attemptId) + "/abandon", { method: "POST", body: "{}" }),
 };
-
-export type WorkspaceSection = Section;

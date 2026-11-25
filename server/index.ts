@@ -7,7 +7,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 
 import { pipeline } from "node:stream/promises";
 import { realpath } from "node:fs/promises";
 import { basename, extname, join, resolve, sep } from "node:path";
-import { activitySummary, type Activity, type ActivityMode, type AnswerDraft, type BootstrapData, type LearnerProfile, type PlanProposal, type PlanTask, type Question } from "../src/shared/domain.js";
+import { activitySummary, type Activity, type ActivityMode, type AnswerDraft, type BootstrapData, type LearnerProfile, type PlanProposal, type PlanTask } from "../src/shared/domain.js";
 import { LearningStore } from "./db.js";
 import type { LearningRepository } from "./store-contract.js";
 import { PluginRegistry, toPublicActivity } from "./plugins/registry.js";

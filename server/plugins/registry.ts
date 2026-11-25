@@ -163,11 +163,6 @@ export class PluginRegistry {
   findManifest(pluginId: string): PluginManifest | undefined { return this.manifests.get(pluginId); }
 
   allActivities(imported: Activity[]): Activity[] { return [...this.activities.values(), ...imported]; }
-
-  findActivity(pluginId: string, activityId: string, imported: Activity[]): Activity | undefined {
-    const activity = this.activities.get(activityId) ?? imported.find((item) => item.id === activityId);
-    return activity?.pluginId === pluginId ? activity : undefined;
-  }
 }
 
 export function toPublicActivity(activity: Activity): PublicActivity {

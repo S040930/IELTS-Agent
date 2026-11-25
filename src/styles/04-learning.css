@@ -9,10 +9,10 @@
 .inline-actions { display: flex; align-items: center; gap: 9px; }
 .inline-actions .text-action + .text-action { border-left: 1px solid var(--line); border-radius: 0; }
 
-.quiet-action, .text-action { display: inline-flex; min-height: 37px; align-items: center; justify-content: center; gap: 7px; padding: 4px 9px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--accent); font-size: var(--text-base); font-weight: 500; white-space: nowrap; cursor: pointer; }
-.quiet-action:hover, .text-action:hover { background: var(--accent-soft); }
-.quiet-action svg, .text-action svg { width: 17px; height: 17px; }
-.quiet-action:disabled, .text-action:disabled { opacity: .5; cursor: not-allowed; }
+.text-action { display: inline-flex; min-height: 37px; align-items: center; justify-content: center; gap: 7px; padding: 4px 9px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--accent); font-size: var(--text-base); font-weight: 500; white-space: nowrap; cursor: pointer; }
+.text-action:hover { background: var(--accent-soft); }
+.text-action svg { width: 17px; height: 17px; }
+.text-action:disabled { opacity: .5; cursor: not-allowed; }
 
 .button { display: inline-flex; min-height: 43px; align-items: center; justify-content: center; gap: 8px; padding: 0 17px; border: 1px solid transparent; border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
 .button:hover:not(:disabled) { transform: translateY(-1px); }
@@ -69,11 +69,9 @@
 /* 表单 */
 .field { display: grid; gap: 8px; }
 .field label { color: var(--ink-soft); font-size: var(--text-sm); font-weight: 500; }
-.field-help { margin-top: -3px; color: var(--muted); font-size: var(--text-xs); }
 .input, .field select, .field input { width: 100%; min-height: 43px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: var(--text-sm); }
 .field input[type="file"] { height: auto; padding: 10px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 17px; }
-.form-error { color: var(--danger); font-size: var(--text-xs); line-height: 1.6; }
 .profile-note { padding: 13px 15px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--subtle-ink); font-size: var(--text-xs); line-height: var(--leading-normal); }
 .profile-form { display: grid; max-width: 700px; gap: 22px; padding: 25px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
 .profile-form-inner { display: grid; gap: 17px; }
@@ -210,25 +208,13 @@
 .attempt-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 13px 6px; border-bottom: 1px solid var(--line); color: var(--subtle-ink); font-size: var(--text-sm); }
 .attempt-result { color: var(--success); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .footer-note { margin: 20px 0 0; color: var(--muted); font-size: var(--text-xs); }
-.upload-intro { display: flex; gap: 12px; color: var(--subtle-ink); font-size: var(--text-sm); line-height: var(--leading-normal); }
-.upload-intro svg { flex: 0 0 20px; margin-top: 2px; color: var(--accent); }
-.plugin-error { margin: 12px 0; }
-
 /* ===== ⑥ 练习工作区 ===== */
 /* 本段为考试宿主 DOM：位于 .workspace-content.exam-mode 冻结范围内。
-   勿在此清扫字面量或归整字重——重塑时保持原样（含 .mock-banner 的暖桃底，
-   它在考试模式内被 05-exam 的覆盖规则接管）。 */
+   勿在此清扫字面量或归整字重——重塑时保持原样。 */
 .workspace-content { max-width: 1660px; }
-.mock-banner { display: flex; align-items: center; gap: 11px; padding: 13px 15px; margin-top: 18px; border: 1px solid #e8d5c8; border-radius: var(--radius-sm); background: #f8efe7; color: var(--subtle-ink); font-size: var(--text-sm); line-height: 1.6; }
-.mock-banner svg { flex: 0 0 18px; color: var(--accent); }
 
 .practice-host { min-width: 0; min-height: 550px; padding-top: 20px; }
 .practice-host [hidden] { display: none !important; }
-
-.flashcard-intro { padding: 19px 20px; margin-bottom: 17px; border-radius: 11px; background: var(--highlight-surface); }
-.flashcard-intro h3 { margin: 0; font-size: 17px; font-weight: 610; }
-.flashcard-intro p { margin: 5px 0 0; color: var(--subtle-ink); font-size: var(--text-sm); line-height: 1.6; }
-.vocabulary-questions { max-width: 800px; }
 
 .autosave-label { display: inline-block; margin: 12px 0 3px; color: var(--muted); font-size: var(--text-xs); }
 
@@ -244,5 +230,4 @@
 .cause-fields .field span { color: var(--muted); font-size: var(--text-xs); }
 .cause-fields .input { min-height: 36px; padding: 0 8px; font-size: var(--text-xs); }
 .cause-fields .button { min-height: 36px; padding: 0 10px; }
-.retry-action { margin-left: 8px; padding: 0 5px; min-height: 24px; }
 

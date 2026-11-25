@@ -23,8 +23,7 @@
 
 .login-page { display: grid; min-height: 100vh; place-items: center; padding: 28px; background: radial-gradient(circle at 15% 12%, var(--accent-wash) 0, transparent 32%), var(--page); }
 .login-card { width: min(100%, 440px); padding: 40px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-md); }
-.login-mark { display: grid; width: 58px; height: 58px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--accent-tint); color: var(--accent); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
-.login-mark { margin-bottom: 24px; }
+.login-mark { display: grid; width: 58px; height: 58px; place-items: center; margin-bottom: 24px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--accent-tint); color: var(--accent); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
 .login-card h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: 0; }
 .login-copy { margin: 10px 0 25px; color: var(--subtle-ink); line-height: 1.7; }
 .login-card .field { display: grid; gap: 8px; color: var(--ink-soft); font-size: var(--text-sm); }

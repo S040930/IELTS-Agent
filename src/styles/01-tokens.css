@@ -45,16 +45,6 @@
   --glass-rail: rgba(237, 241, 245, .88);
   --skeleton-sweep: rgba(255, 255, 255, .62);
 
-  /* 间距 */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
-  --space-8: 64px;
-
   /* 圆角 */
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -64,7 +54,6 @@
   /* 阴影 */
   --shadow-sm: 0 1px 2px rgba(15, 20, 26, .06);
   --shadow-md: 0 10px 28px -6px rgba(15, 20, 26, .16);
-  --shadow-lg: 0 14px 36px -8px rgba(15, 20, 26, .20);
   --shadow-drawer: -12px 0 32px -8px rgba(15, 20, 26, .18);
 
   /* 字阶 */
@@ -74,11 +63,7 @@
   --text-base: 14px;
   --text-md: 16px;
   --text-lg: 20px;
-  --text-xl: 26px;
-  --text-2xl: 34px;
-  --leading-tight: 1.5;
   --leading-normal: 1.7;
-  --leading-relaxed: 1.85;
 
   /* 焦点环 */
   --ring: 2px solid #0b6fae;
@@ -127,7 +112,6 @@
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
   --shadow-md: 0 10px 28px -6px rgba(0, 0, 0, .50);
-  --shadow-lg: 0 14px 36px -8px rgba(0, 0, 0, .55);
   --shadow-drawer: -12px 0 32px -8px rgba(0, 0, 0, .50);
 
   --ring: 2px solid #4aa8e0;
