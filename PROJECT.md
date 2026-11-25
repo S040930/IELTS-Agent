@@ -37,3 +37,11 @@
 - [docs/plugins.md](docs/plugins.md)：插件 SDK 和生命周期。
 - [docs/content-package.md](docs/content-package.md)：本机内容包结构和组员安装。
 - [docs/learning-system.md](docs/learning-system.md)：画像、计划、复习和本机学习数据。
+
+- [docs/computer-exam.md](docs/computer-exam.md)：机考界面、准备与交卷流程、组卷快照、计时和音频恢复规则。
+- [README.md](README.md)：本机安装、启动与项目入口。
+- [docs/deploy-vercel.md](docs/deploy-vercel.md)：Vercel、Neon、Blob、密钥与云端题库初始化。
+- [docs/deployment-acceptance-2026-10-23.md](docs/deployment-acceptance-2026-10-23.md)：本轮线上部署、隔离验收、AI 模型恢复和数据清理记录。
+- [docs/plugins.md](docs/plugins.md)：插件 SDK 和生命周期。
+- [docs/content-package.md](docs/content-package.md)：本机内容包结构和组员安装。
+- [docs/learning-system.md](docs/learning-system.md)：画像、计划、复习和本机学习数据。
