@@ -1,0 +1,82 @@
+/* ===== ① 设计令牌 ===== */
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  color: #1d1d1f;
+  background: #f5f5f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  font-weight: 400;
+
+  /* 颜色 */
+  --page: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #eff1f5;
+  --sidebar: #f1f3f7;
+  --rail: 232px;
+  --ink: #1d1d1f;
+  --ink-soft: #33343a;
+  --subtle-ink: #51545c;
+  --muted: #60636b;
+  --line: #dadde4;
+  --line-strong: #c7cbd3;
+  --hairline: #e7e9ee;
+  --border-input: #c7cbd3;
+  --accent: #0068cc;
+  --accent-hover: #0058af;
+  --accent-ink: #005aaf;
+  --accent-weak: rgba(0, 104, 204, .10);
+  --accent-soft: rgba(0, 104, 204, .075);
+  --accent-wash: #deebfa;
+  --highlight-surface: #edf5ff;
+  --selected-surface: #dfedff;
+  --neutral-fill: #e9ebf0;
+  --accent-tint: #f0f6ff;
+  --positive-fill: #e3f1ea;
+  --success: #217347;
+  --success-tint: #edf8f1;
+  --danger: #ad342a;
+  --danger-tint: #fff2f0;
+
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* 圆角 */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(26, 37, 59, .06);
+  --shadow-md: 0 18px 46px rgba(26, 37, 59, .12);
+  --shadow-lg: 0 24px 60px rgba(26, 37, 59, .16);
+  --shadow-drawer: -10px 0 26px rgba(26, 37, 59, .06);
+
+  /* 字阶 */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 26px;
+  --text-2xl: 34px;
+  --leading-tight: 1.5;
+  --leading-normal: 1.7;
+  --leading-relaxed: 1.85;
+
+  /* 焦点环 */
+  --ring: 3px solid rgba(0, 104, 204, .40);
+
+  --page-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
