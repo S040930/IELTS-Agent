@@ -41,8 +41,17 @@ const applyTheme = (mode: ThemeMode) => {
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0f141a" : "#f4f6f8");
 };
 
+/* ===== hash 路由 =====
+   应用内导航统一走 navigate（同步 setState + 写 hash）；
+   hashchange 只作为浏览器侧（后退/前进/深链）的唯一入口。 */
+const routablePages: ReadonlySet<string> = new Set(["home", "listening", "reading", "speaking", "mock", "review", "profile", "settings", "workspace", "preparation"]);
+const parseHash = (hash: string): Page | undefined => {
+  const name = hash.replace(/^#\/?/, "").split("/")[0];
+  return routablePages.has(name) ? name as Page : undefined;
+};
+
 export function App() {
-  const [page, setPage] = useState<Page>("home");
+  const [page, setPage] = useState<Page>(() => parseHash(window.location.hash) ?? "home");
   const [workspaceReturnPage, setWorkspaceReturnPage] = useState<Page>("home");
   const [data, setData] = useState<BootstrapData>();
   const [session, setSession] = useState<Session>();
@@ -62,6 +71,7 @@ export function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [bootToken, setBootToken] = useState(0);
+  const [exitPromptToken, setExitPromptToken] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(themeKey);
     return stored === "light" || stored === "dark" ? stored : "system";
@@ -124,6 +134,35 @@ export function App() {
     return () => media.removeEventListener("change", onSchemeChange);
   }, [themeMode]);
 
+  const pageRef = useRef(page); pageRef.current = page;
+  const sessionRef = useRef(session); sessionRef.current = session;
+  /* 浏览器侧 hash 变化（后退/前进/深链）：未知 hash 归一化；离开未交卷的工作区时吞掉后退并弹退出确认。 */
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = parseHash(window.location.hash);
+      if (!next) { window.location.replace("#/home"); return; }
+      if (next === pageRef.current) return;
+      if (pageRef.current === "workspace" && sessionRef.current && !sessionRef.current.result) {
+        setExitPromptToken((value) => value + 1);
+        if (window.location.hash !== "#/workspace") window.location.hash = "#/workspace";
+        return;
+      }
+      setPage(next);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  /* 会话守卫视图冷深链（#/workspace、#/preparation 无对应状态）：boot 完成仍无状态则归一回 home。 */
+  useEffect(() => {
+    if (page !== "workspace" && page !== "preparation") return;
+    if (page === "workspace" ? session : preparation) return;
+    if (!data) return;
+    setPage("home");
+    if (window.location.hash === "#/" + page) window.location.replace("#/home");
+    else if (window.location.hash !== "#/home") window.location.hash = "#/home";
+  }, [page, session, preparation, data]);
+
   useEffect(() => {
     if (!authReady || !authenticated || loaded.current) return;
     let cancelled = false;
@@ -153,6 +192,8 @@ export function App() {
             setSession({ activity, draft: restored, result });
             setQuestionId(activity.questions[0]?.id ?? "");
             setPage("workspace");
+            /* 启动恢复是纠偏不是用户导航：replace 语义压入 #/workspace，后退不会弹到开站 hash。 */
+            if (window.location.hash !== "#/workspace") window.location.replace("#/workspace");
           }
         }
         if (!cancelled) loaded.current = true;
@@ -204,23 +245,28 @@ export function App() {
     void import(/* @vite-ignore */ browserUrl).catch(() => undefined);
   }, [data?.plugins]);
 
+  const navigate = useCallback((next: Page) => {
+    setPage(next);
+    if (parseHash(window.location.hash) !== next) window.location.hash = "#/" + next;
+  }, []);
+
   const startActivity = useCallback(async (id: string, mode: ActivityMode = "practice", taskId?: string, reviewIds?: string[], questionIds?: string[]) => {
     const activity = data?.activities.find((item) => item.id === id);
     if (!activity) { setError("找不到练习材料，请刷新题库后重试。"); return; }
     setWorkspaceReturnPage(page === "workspace" ? "home" : page);
     setToast(""); setPreparation({ activity, mode, taskId, reviewIds, questionIds });
-    setCoachOpen(false); setPage("preparation");
+    setCoachOpen(false); navigate("preparation");
     prefetchPlugin(activity.pluginId);
-  }, [data, page, prefetchPlugin]);
+  }, [data, navigate, page, prefetchPlugin]);
 
   const startMock = useCallback(async (section: "reading" | "listening") => {
     const value = await perform(() => api.prepareMock(section));
     if (!value) return;
     setWorkspaceReturnPage(page === "workspace" ? "mock" : page);
     setToast(""); setPreparation({ activity: activitySummary(value.activity), mode: "mock" });
-    setCoachOpen(false); setPage("preparation");
+    setCoachOpen(false); navigate("preparation");
     prefetchPlugin(value.activity.pluginId);
-  }, [page, perform, prefetchPlugin]);
+  }, [navigate, page, perform, prefetchPlugin]);
 
   const launchPreparation = useCallback(async (durations: number[]) => {
     if (!preparation) return false;
@@ -232,9 +278,9 @@ export function App() {
     localStorage.setItem("ielts-active-attempt", value.draft.attemptId);
     setSession({ activity: value.activity, draft: value.draft });
     setQuestionId(value.activity.questions[0]?.id ?? "");
-    setCoachOpen(false); setCoachLines([]); setPreparation(undefined); setPage("workspace");
+    setCoachOpen(false); setCoachLines([]); setPreparation(undefined); navigate("workspace");
     return true;
-  }, [preparation, perform]);
+  }, [navigate, preparation, perform]);
 
   const startTask = useCallback((task: PlanTask) => startActivity(task.activityId, task.kind === "review" ? "review" : "practice", task.id, task.reviewQuestionIds, task.questionIds), [startActivity]);
 
@@ -279,8 +325,8 @@ export function App() {
     setWorkspaceReturnPage("profile");
     setSession({ activity: value.activity, draft: value.result, result: value.result });
     setQuestionId(value.activity.questions[0]?.id ?? "");
-    setToast(""); setCoachOpen(false); setCoachLines([]); setPage("workspace");
-  }, [perform, applyData]);
+    setToast(""); setCoachOpen(false); setCoachLines([]); navigate("workspace");
+  }, [navigate, perform, applyData]);
 
   const confirmPlanProposal = useCallback(async (id: string) => {
     await perform(() => api.confirmPlanProposal(id), (updated) => {
@@ -323,9 +369,9 @@ export function App() {
 
   const goHome = useCallback(() => {
     if (session?.result) localStorage.removeItem("ielts-active-attempt");
-    setPage(workspaceReturnPage === "workspace" ? "home" : workspaceReturnPage); setCoachOpen(false);
+    navigate(workspaceReturnPage === "workspace" ? "home" : workspaceReturnPage); setCoachOpen(false);
     void refresh().catch((reason) => setError(errorMessage(reason)));
-  }, [refresh, session, workspaceReturnPage]);
+  }, [navigate, refresh, session, workspaceReturnPage]);
 
   const toggleRail = useCallback(() => {
     setRailHidden((hidden) => {
@@ -351,22 +397,22 @@ export function App() {
     <aside className="side-rail">
       <button className="rail-collapse" type="button" aria-label="收起侧边栏" title="收起侧边栏" onClick={toggleRail}><Icon name="caret" size={16} /></button>
       <div className="brand"><span className="brand-stamp"><Icon name="sparkle" size={18} /></span><span className="brand-name">暖学 IELTS</span></div>
-      <nav className="nav-list" aria-label="主要导航">{navItems.slice(0, 6).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { setPage(item.page); setCoachOpen(false); }} />)}</nav>
+      <nav className="nav-list" aria-label="主要导航">{navItems.slice(0, 6).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { navigate(item.page); setCoachOpen(false); }} />)}</nav>
       <div className="nav-spacer" /><div className="nav-divider" />
-      <nav className="nav-list" aria-label="学习记录与设置">{navItems.slice(6).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { setPage(item.page); setCoachOpen(false); }} />)}</nav>
+      <nav className="nav-list" aria-label="学习记录与设置">{navItems.slice(6).map((item) => <NavButton key={item.page} item={item} active={page === item.page} onClick={() => { navigate(item.page); setCoachOpen(false); }} />)}</nav>
       <div className="local-note"><Icon name="lock" size={14} /><span>学习记录已保护</span></div>
     </aside>
     <main className="page-main" key={page}>
       {railHidden && <div className="rail-toolbar"><button className="rail-expand" type="button" aria-label="展开侧边栏" title="展开侧边栏" onClick={toggleRail}><Icon name="menu" size={18} /></button></div>}
-      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={setPage} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), applyData)} onSetup={() => setPage("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
+      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={navigate} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), applyData)} onSetup={() => navigate("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
       {(page === "reading" || page === "listening") && <LibraryPage section={page} data={data} onStart={(id) => void startActivity(id)} />}
       {page === "speaking" && <SpeakingPage />}
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
       {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} pendingAttempt={pendingAttempt} />}
       {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} themeMode={themeMode} onThemeChange={(mode) => { setThemeMode(mode); localStorage.setItem(themeKey, mode); }} />}
-      {page === "preparation" && preparation && <ExamPreparation key={preparation.activity.id} preparation={preparation} busy={busy} onBack={() => { setPreparation(undefined); setPage(workspaceReturnPage); setError(""); }} onStart={launchPreparation} />}
-      {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} />}
+      {page === "preparation" && preparation && <ExamPreparation key={preparation.activity.id} preparation={preparation} busy={busy} onBack={() => { setPreparation(undefined); navigate(workspaceReturnPage); setError(""); }} onStart={launchPreparation} />}
+      {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} exitPromptToken={exitPromptToken} />}
     </main>
 
     {coachOpen && session && currentQuestion && <CoachDrawer activity={session.activity} question={currentQuestion} draft={session.draft} result={session.result} data={data} lines={coachLines} loading={coachLoading} error={coachError} failedMessage={failedMessage} onClose={() => setCoachOpen(false)} onSend={sendCoach} onRetry={() => failedMessage && void sendCoach(failedMessage)} />}
@@ -608,10 +654,10 @@ function restoreExamView(root: HTMLElement, snapshot: ExamViewSnapshot): () => v
   };
 }
 
-function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted }: {
+function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted, exitPromptToken }: {
   session: Session; plugin?: BootstrapData["plugins"][number]; skillLabels: Record<string, string>; busy: boolean; submitting: boolean; error: string; onBack: () => void; onAnswer: (answers: Record<string, string>) => void;
   onQuestion: (id: string) => void; onSubmit: (answers: Record<string, string>, questionTimeSeconds: Record<string, number>) => Promise<boolean>;
-  onCoach: () => void; onCause: (qid: string, tag: string, cause: string) => Promise<boolean>; onAudioInterrupted: (reason: string) => void;
+  onCoach: () => void; onCause: (qid: string, tag: string, cause: string) => Promise<boolean>; onAudioInterrupted: (reason: string) => void; exitPromptToken: number;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const callbacks = useRef({ onAnswer, onQuestion, onSubmit });
@@ -658,6 +704,8 @@ function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, 
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
+  /* App 层吞掉后退手势时递增 token，这里弹出与工具菜单同一个退出确认。 */
+  useEffect(() => { if (exitPromptToken && !resultRef.current) setExitOpen(true); }, [exitPromptToken]);
   const [noticeVisible, setNoticeVisible] = useState(true);
   useEffect(() => {
     setNoticeVisible(true);
