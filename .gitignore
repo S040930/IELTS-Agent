@@ -10,3 +10,14 @@ coverage/
 
 .vercel
 .env*
+
+# macOS
+.DS_Store
+
+# 幻灯片 / 图表构建缓存
+.chart-data-*/
+.ppt-build/
+.pptx-style-build/
+.slide4-build/
+.playwright-cli/
+output/
