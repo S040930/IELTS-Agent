@@ -26,7 +26,4 @@
 }
 @media (max-width: 600px) {
   .exam-prep-body { width: calc(100% - 20px); padding: 19px 14px; margin: 12px auto; }
-  .nav-button { flex-direction: column; gap: 1px; min-height: 45px; }
-  .nav-button .nav-copy { display: block; font-size: 9px; line-height: 13px; }
-  .nav-button svg { flex: 0 0 17px; width: 17px; height: 17px; }
 }
