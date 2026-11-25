@@ -1,18 +1,18 @@
 /* ===== ③ 布局骨架 ===== */
 .app-frame { min-height: 100vh; background: var(--page); }
-.side-rail { position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; width: var(--rail); flex-direction: column; padding: 25px 16px 17px; background: rgba(241,243,247,.88); backdrop-filter: blur(18px); overflow-y: auto; border-right: 1px solid var(--line); transition: transform .2s ease; }
+.side-rail { position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; width: var(--rail); flex-direction: column; padding: 25px 16px 17px; background: var(--glass-rail); backdrop-filter: blur(18px); overflow-y: auto; border-right: 1px solid var(--line); transition: transform .2s ease; }
 .rail-collapse { position: absolute; top: 21px; right: 10px; display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; transition: background .16s ease, color .16s ease; }
 .rail-collapse:hover { background: var(--neutral-fill); color: var(--ink); }
 .rail-collapse svg { transform: rotate(90deg); }
 .rail-toolbar { display: flex; padding: 16px 16px 0; }
 .rail-expand { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--subtle-ink); box-shadow: var(--shadow-sm); cursor: pointer; transition: background .16s ease, color .16s ease; }
 .rail-expand:hover { background: var(--neutral-fill); color: var(--ink); }
-.brand { display: flex; align-items: center; gap: 11px; padding: 0 14px; margin: 1px 0 34px; color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: -.45px; }
-.brand-stamp { display: grid; width: 32px; height: 32px; place-items: center; color: var(--accent); border: 1px solid rgba(0, 104, 204, .28); border-radius: 11px; background: var(--accent-tint); }
+.brand { display: flex; align-items: center; gap: 11px; padding: 0 14px; margin: 1px 0 34px; color: var(--ink); font-size: 20px; font-weight: 600; letter-spacing: 0; }
+.brand-stamp { display: grid; width: 32px; height: 32px; place-items: center; color: var(--accent); border: 1px solid var(--accent-soft); border-radius: var(--radius-sm); background: var(--accent-tint); }
 .nav-list { display: grid; gap: 7px; }
-.nav-button { position: relative; display: flex; width: 100%; min-height: 48px; align-items: center; gap: 14px; padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: var(--subtle-ink); font-size: var(--text-base); text-align: left; cursor: pointer; transition: background .16s ease, color .16s ease; }
+.nav-button { position: relative; display: flex; width: 100%; min-height: 48px; align-items: center; gap: 14px; padding: 0 13px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--subtle-ink); font-size: var(--text-base); text-align: left; cursor: pointer; transition: background .16s ease, color .16s ease; }
 .nav-button svg { flex: 0 0 19px; width: 19px; height: 19px; color: var(--muted); }
-.nav-button:hover { background: rgba(255, 255, 255, .52); color: var(--ink); }
+.nav-button:hover { background: var(--surface-2); color: var(--ink); }
 .nav-button.active { background: var(--accent-wash); color: var(--accent-ink); font-weight: 600; }
 .nav-button.active svg { color: var(--accent); }
 .nav-button.active::before { content: ""; position: absolute; top: 50%; left: 0; width: 3px; height: 22px; transform: translateY(-50%); border-radius: var(--radius-pill); background: var(--accent); }
@@ -22,13 +22,13 @@
 .local-note svg { width: 14px; height: 14px; }
 
 .login-page { display: grid; min-height: 100vh; place-items: center; padding: 28px; background: radial-gradient(circle at 15% 12%, var(--accent-wash) 0, transparent 32%), var(--page); }
-.login-card { width: min(100%, 440px); padding: 40px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-md); }
-.login-mark { display: grid; width: 58px; height: 58px; place-items: center; border: 1px solid var(--line); border-radius: 17px; background: var(--accent-tint); color: var(--accent); font-size: 14px; font-weight: 750; letter-spacing: .06em; }
+.login-card { width: min(100%, 440px); padding: 40px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-md); }
+.login-mark { display: grid; width: 58px; height: 58px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--accent-tint); color: var(--accent); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
 .login-mark { margin-bottom: 24px; }
-.login-card h1 { margin: 0; font-size: 29px; letter-spacing: -.7px; }
+.login-card h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: 0; }
 .login-copy { margin: 10px 0 25px; color: var(--subtle-ink); line-height: 1.7; }
 .login-card .field { display: grid; gap: 8px; color: var(--ink-soft); font-size: var(--text-sm); }
-.login-card .input { min-height: 46px; padding: 0 13px; border: 1px solid var(--border-input); border-radius: var(--radius-sm); background: #fff; }
+.login-card .input { min-height: 46px; padding: 0 13px; border: 1px solid var(--border-input); border-radius: var(--radius-sm); background: var(--surface); }
 .login-submit { width: 100%; margin-top: 17px; }
 .login-error { color: var(--danger); font-size: var(--text-sm); }
 .login-footnote { margin: 23px 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.7; }
@@ -42,7 +42,9 @@
    位移用 var(--rail) 的负值，不用百分比——收起后自身宽度不变，百分比会算错。 */
 .app-frame.rail-hidden .side-rail { transform: translateX(calc(var(--rail) * -1)); }
 .app-frame.rail-hidden .page-main { margin-left: 0; }
-.page-content { width: 100%; max-width: 1500px; margin: 0 auto; padding: 45px 54px 80px; animation: page-in .23s cubic-bezier(.2,.75,.3,1) both; }
+.page-content { width: 100%; max-width: 1500px; margin: 0 auto; padding: 45px 54px 80px; animation: page-in-soft .23s cubic-bezier(.2,.75,.3,1) both; }
 .app-frame.rail-hidden .page-content { padding-top: 24px; }
+/* 学习面进场用 2px 轻位移；原 4px 的 page-in 保留给考试面弹层复用 */
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes page-in-soft { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 

@@ -1,3 +1,27 @@
+/* ===== CD IELTS 复刻冻结 =====
+   全局令牌换新（科技冷淡风重塑）时，考试面保持原浅色真机观感：在两个考试根元素上
+   钉住整套重塑前的令牌值（原 styles.css ① 段快照）。未来新增令牌无需进钉——考试
+   DOM 不消费它们；若考试 DOM 新引用了某个全局令牌，需把当时值补进这里。
+   侧栏与导师抽屉在这两个包裹之外，正常跟随全局主题。 */
+:where(.workspace-content.exam-mode, .exam-preparation) {
+  color-scheme: light;
+  --page: #f5f5f7; --surface: #ffffff; --surface-2: #eff1f5; --sidebar: #f1f3f7;
+  --ink: #1d1d1f; --ink-soft: #33343a; --subtle-ink: #51545c; --muted: #60636b;
+  --line: #dadde4; --line-strong: #c7cbd3; --hairline: #e7e9ee; --border-input: #c7cbd3;
+  --accent: #0068cc; --accent-hover: #0058af; --accent-ink: #005aaf; --accent-fill: #0068cc;
+  --accent-weak: rgba(0, 104, 204, .10); --accent-soft: rgba(0, 104, 204, .075);
+  --accent-wash: #deebfa; --highlight-surface: #edf5ff; --selected-surface: #dfedff;
+  --neutral-fill: #e9ebf0; --accent-tint: #f0f6ff; --positive-fill: #e3f1ea;
+  --success: #217347; --success-tint: #edf8f1; --danger: #ad342a; --danger-tint: #fff2f0;
+  --radius-sm: 10px; --radius-md: 16px; --radius-lg: 22px; --radius-pill: 999px;
+  --shadow-sm: 0 2px 8px rgba(26, 37, 59, .06); --shadow-md: 0 18px 46px rgba(26, 37, 59, .12);
+  --shadow-lg: 0 24px 60px rgba(26, 37, 59, .16); --shadow-drawer: -10px 0 26px rgba(26, 37, 59, .06);
+  --text-xs: 12px; --text-sm: 13px; --text-base: 14px; --text-md: 16px;
+  --text-lg: 20px; --text-xl: 26px; --text-2xl: 34px;
+  --leading-tight: 1.5; --leading-normal: 1.7; --leading-relaxed: 1.85;
+  --ring: 3px solid rgba(0, 104, 204, .40);
+}
+
 /* ===== ⑥B 机考考试面（CD IELTS） ===== */
 .workspace-content.exam-mode {
   --exam-bg: #f2f4f6;

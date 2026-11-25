@@ -6,14 +6,14 @@
 .speech-panel h2, .speech-history h2 { margin: 4px 0 12px; }
 .speech-meta, .speech-config, .speech-transcript p { color: var(--muted); font-size: 14px; }
 .speech-meta { margin: 4px 0 12px; }
-.speech-question { max-width: 34em; margin: 20px 0; font-size: clamp(21px, 3vw, 32px); font-weight: 530; line-height: 1.32; letter-spacing: -.025em; }
+.speech-question { max-width: 34em; margin: 20px 0; font-size: clamp(21px, 3vw, 32px); font-weight: 500; line-height: 1.32; letter-spacing: 0; }
 .speech-cues { display: grid; gap: 5px; margin: 0 0 18px; padding: 14px 20px 14px 36px; border-left: 2px solid var(--accent-wash); color: var(--subtle-ink); line-height: 1.45; }
-.speech-segments { display: inline-flex; max-width: 100%; padding: 4px; margin-bottom: 18px; border-radius: 14px; background: var(--surface-2); }
-.speech-segments button { display: grid; gap: 2px; min-width: 0; padding: 7px clamp(8px, 3vw, 28px); border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+.speech-segments { display: inline-flex; max-width: 100%; padding: 4px; margin-bottom: 18px; border-radius: var(--radius-md); background: var(--surface-2); }
+.speech-segments button { display: grid; gap: 2px; min-width: 0; padding: 7px clamp(8px, 3vw, 28px); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; }
 .speech-segments span { font-size: 12px; }
 .speech-segments [aria-pressed=true] { background: var(--surface); color: var(--accent-ink); box-shadow: var(--shadow-sm); }
 .speech-topic { display: grid; width: fit-content; gap: 4px; margin: 24px 0 14px; font-size: 14px; font-weight: 600; }
-.speech-topic select { max-width: 100%; min-height: 40px; padding: 4px 12px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--ink); background: var(--surface); font: inherit; }
+.speech-topic select { max-width: 100%; min-height: 40px; padding: 4px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface); font: inherit; }
 .speech-actions { margin-top: 16px; }
 .speech-link { border: 0; background: none; color: var(--accent-ink); cursor: pointer; }
 .speech-history { margin-top: 28px; }
@@ -24,16 +24,16 @@
 .speech-signal { justify-content: center; flex-direction: column; min-height: 146px; margin: 18px 0; border-radius: var(--radius-md); background: radial-gradient(ellipse at center, var(--accent-tint), var(--surface) 70%); color: var(--accent-ink); }
 .speech-wave { height: 52px; display: inline-flex; align-items: center; gap: 4px; }
 .speech-wave i { display: block; width: 5px; height: 100%; border-radius: 4px; background: currentColor; transition: transform 150ms linear; }
-.speech-clock { font-variant-numeric: tabular-nums; color: var(--accent-ink); }
+.speech-clock { font-variant-numeric: tabular-nums; font-family: var(--font-mono); color: var(--accent-ink); }
 .speech-transcript { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 16px; }
 .speech-transcript summary { cursor: pointer; }
 .speech-transcript ol { max-height: 42vh; overflow-y: auto; }
 .speech-transcript li { display: grid; grid-template-columns: 3em 1fr; gap: 8px; padding: 10px 0; overflow-wrap: anywhere; }
-.speech-notice { padding: 10px 14px; border-radius: 10px; color: var(--danger); background: var(--danger-tint); }
+.speech-notice { padding: 10px 14px; border-radius: var(--radius-sm); color: var(--danger); background: var(--danger-tint); }
 .speech-review blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--surface-2); }
 .speech-review small { display: block; color: var(--muted); }
 .speech-ratings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px; }
-.speech-ratings div { padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+.speech-ratings div { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); }
 .speech-ratings strong { color: var(--accent-ink); }
 .speech-ratings dd { margin: 8px 0 0; }
 
@@ -46,8 +46,9 @@
 .demo-stages li { flex: 1; border-top: 3px solid var(--line); padding-top: 6px; color: var(--muted); font-size: 13px; transition: border-color .22s; }
 .demo-stages .reached { border-color: var(--accent); }
 .demo-stages [aria-current] { color: var(--accent-ink); font-weight: 600; }
-.speech-demo .speech-signal[data-speaker="learner"] { color: #5851ac; background: radial-gradient(ellipse at center, #f1efff, var(--surface) 70%); }
-.demo-caption { min-height: 112px; padding: 16px; border-radius: var(--radius-md); background: var(--surface-2); animation: page-in .2s ease both; }
+/* 演示双人格：考官走冰蓝，学员走中性墨色（原紫色 #5851ac/#f1efff） */
+.speech-demo .speech-signal[data-speaker="learner"] { color: var(--ink-soft); background: radial-gradient(ellipse at center, var(--neutral-fill), var(--surface) 70%); }
+.demo-caption { min-height: 112px; padding: 16px; border-radius: var(--radius-md); background: var(--surface-2); animation: page-in-soft .2s ease both; }
 .demo-caption strong { color: var(--muted); font-size: 13px; }
 .demo-caption p { margin: 6px 0 0; font-size: clamp(18px, 2vw, 24px); line-height: 1.4; }
 .demo-progress { display: block; width: 100%; height: 5px; margin-top: 22px; accent-color: var(--accent); }

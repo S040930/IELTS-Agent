@@ -2,7 +2,6 @@
 .button:active:not(:disabled), .quick-link:active { transform: scale(.98); }
 .quick-link:hover { box-shadow: var(--shadow-md); }
 .quick-link .library-icon { background: var(--accent-tint); color: var(--accent); }
-.quick-link:last-child .library-icon { color: #5751b1; background: #eeedfc; }
 .exam-preparation { background: var(--page); }
 .exam-prep-header, .app-frame.exam-active .exam-bar, .app-frame.exam-active .exam-palette {
   background: rgba(250,251,253,.94); backdrop-filter: blur(16px); border-color: var(--line);
@@ -19,7 +18,9 @@
 .exam-submit:not(.is-submitted) { color: var(--accent-ink); background: var(--accent-wash); border-radius: var(--radius-sm); }
 .exam-review-dialog, .exam-tools-popover { border-radius: var(--radius-md); border-color: var(--line); box-shadow: var(--shadow-md); }
 .exam-q-explanation[open] { border-color: var(--accent); border-radius: 5px; background: var(--accent-tint); }
-.exam-review-dialog[open], .exam-tools-menu[open] .exam-tools-popover, .speech-transcript li { animation: page-in .18s ease-out both; }
+/* 考试弹层保留原 page-in（复刻行为）；口语转写是学习面，走 2px 轻位移 */
+.exam-review-dialog[open], .exam-tools-menu[open] .exam-tools-popover { animation: page-in .18s ease-out both; }
+.speech-transcript li { animation: page-in-soft .18s ease-out both; }
 @media (max-width: 1000px) {
   .quick-links { grid-template-columns: 1fr; gap: 8px; }
   .quick-link { padding: 10px 14px; }

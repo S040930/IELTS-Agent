@@ -71,7 +71,7 @@
   .page-main { margin-left: var(--rail); }
   .page-content { padding: 27px 16px 80px; }
   .page-title-row { align-items: flex-start; margin-bottom: 23px; }
-  .page-title-row h1 { font-size: 30px; letter-spacing: -1px; }
+  .page-title-row h1 { font-size: 22px; letter-spacing: 0; }
   .page-subtitle { margin-top: 7px; font-size: var(--text-sm); }
   .page-actions { justify-content: flex-end; }
   .plan-context { align-items: flex-start; margin-bottom: 24px; font-size: var(--text-xs); }

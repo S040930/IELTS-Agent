@@ -1,8 +1,9 @@
 /* ===== ① 设计令牌 ===== */
+/* 「仪器盘面」冷调体系：灰阶纸面 + 白面板 + 发丝线分层；冰蓝只承担操作与状态。 */
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-  color: #1d1d1f;
-  background: #f5f5f7;
+  color: var(--ink);
+  background: var(--page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -11,34 +12,37 @@
   font-weight: 400;
 
   /* 颜色 */
-  --page: #f5f5f7;
+  --page: #f4f6f8;
   --surface: #ffffff;
-  --surface-2: #eff1f5;
-  --sidebar: #f1f3f7;
+  --surface-2: #eaeef2;
+  --sidebar: #edf1f5;
   --rail: 232px;
-  --ink: #1d1d1f;
-  --ink-soft: #33343a;
-  --subtle-ink: #51545c;
-  --muted: #60636b;
-  --line: #dadde4;
-  --line-strong: #c7cbd3;
-  --hairline: #e7e9ee;
-  --border-input: #c7cbd3;
-  --accent: #0068cc;
-  --accent-hover: #0058af;
-  --accent-ink: #005aaf;
-  --accent-weak: rgba(0, 104, 204, .10);
-  --accent-soft: rgba(0, 104, 204, .075);
-  --accent-wash: #deebfa;
-  --highlight-surface: #edf5ff;
-  --selected-surface: #dfedff;
-  --neutral-fill: #e9ebf0;
-  --accent-tint: #f0f6ff;
-  --positive-fill: #e3f1ea;
-  --success: #217347;
-  --success-tint: #edf8f1;
-  --danger: #ad342a;
-  --danger-tint: #fff2f0;
+  --ink: #171a20;
+  --ink-soft: #2c313a;
+  --subtle-ink: #4a505c;
+  --muted: #5c6470;
+  --line: #d3dae1;
+  --line-strong: #b8c2cc;
+  --hairline: #e3e8ed;
+  --border-input: #b8c2cc;
+  --accent: #0b6fae;
+  --accent-hover: #095c92;
+  --accent-ink: #075180;
+  --accent-weak: rgba(11, 111, 174, .05);
+  --accent-soft: rgba(11, 111, 174, .09);
+  --accent-wash: #e7f0f6;
+  --accent-fill: #0b6fae;
+  --highlight-surface: #eaf2f8;
+  --selected-surface: #d6e6f0;
+  --neutral-fill: #e5eaf0;
+  --accent-tint: #eaf2f8;
+  --positive-fill: #d9eee2;
+  --success: #197a54;
+  --success-tint: #e2f1e8;
+  --danger: #b3303c;
+  --danger-tint: #faecee;
+  --glass-rail: rgba(237, 241, 245, .88);
+  --skeleton-sweep: rgba(255, 255, 255, .62);
 
   /* 间距 */
   --space-1: 4px;
@@ -51,18 +55,19 @@
   --space-8: 64px;
 
   /* 圆角 */
-  --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 22px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
   --radius-pill: 999px;
 
   /* 阴影 */
-  --shadow-sm: 0 2px 8px rgba(26, 37, 59, .06);
-  --shadow-md: 0 18px 46px rgba(26, 37, 59, .12);
-  --shadow-lg: 0 24px 60px rgba(26, 37, 59, .16);
-  --shadow-drawer: -10px 0 26px rgba(26, 37, 59, .06);
+  --shadow-sm: 0 1px 2px rgba(15, 20, 26, .06);
+  --shadow-md: 0 10px 28px -6px rgba(15, 20, 26, .16);
+  --shadow-lg: 0 14px 36px -8px rgba(15, 20, 26, .20);
+  --shadow-drawer: -12px 0 32px -8px rgba(15, 20, 26, .18);
 
   /* 字阶 */
+  --text-micro: 11px;
   --text-xs: 12px;
   --text-sm: 13px;
   --text-base: 14px;
@@ -75,8 +80,8 @@
   --leading-relaxed: 1.85;
 
   /* 焦点环 */
-  --ring: 3px solid rgba(0, 104, 204, .40);
+  --ring: 2px solid #0b6fae;
 
-  --page-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  /* 数字与微标签（学习面专用；机考钟面保持 sans + tabular-nums） */
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "PingFang SC", monospace;
 }
-
