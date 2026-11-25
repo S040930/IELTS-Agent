@@ -731,7 +731,7 @@ function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, 
           });
         });
       }
-    }).catch((reason: unknown) => { console.error("Practice module failed to load", reason); setMountError("这项练习暂时无法打开，请稍后重试。"); });
+    }).catch((reason: unknown) => { console.error("Practice module failed to load", reason); setMountError("This practice could not be opened. Please try again later."); });
     return () => { disposed = true; window.cancelAnimationFrame(restoreFrame); window.cancelAnimationFrame(restoreFrameNext); cleanupViewRestore?.(); cleanup?.(); };
   }, [activity.id, plugin?.browserUrl, draft.attemptId, result?.submittedAt]);
 
@@ -753,7 +753,7 @@ function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, 
       setSaving(true);
       void enqueueDraftSave()
         .then(() => { dirtySeconds = Math.max(0, dirtySeconds - savedSeconds); setSaving(false); setSaveError(""); })
-        .catch((reason) => { setSaving(false); setSaveError("逐题用时保存失败：" + errorMessage(reason)); })
+        .catch((reason) => { setSaving(false); setSaveError("Could not save question timing: " + errorMessage(reason)); })
         .finally(() => { savingTimes = false; });
       return true;
     };
@@ -816,7 +816,7 @@ function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, 
       setSaving(true);
       void enqueueDraftSave()
         .then(() => { setSaving(false); setSaveError(""); })
-        .catch((reason) => { setSaving(false); setSaveError("自动保存失败：" + errorMessage(reason)); });
+        .catch((reason) => { setSaving(false); setSaveError("Autosave failed: " + errorMessage(reason)); });
     }, 400);
     return () => window.clearTimeout(timer);
   }, [answerKey, draft.attemptId, result, enqueueDraftSave]);
@@ -861,7 +861,7 @@ function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, 
       onBack();
     } catch (reason) {
       abandoningAttempt.current = false;
-      setMountError("放弃练习失败：" + errorMessage(reason));
+      setMountError("Could not exit this attempt: " + errorMessage(reason));
     } finally {
       setSaving(false);
     }
@@ -906,25 +906,26 @@ function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, 
     </header>
     {draft.interruption && !result && noticeVisible && <div className="notice"><Icon name="time" />A previous session was interrupted. Your answer draft has been restored.</div>}
     {error && <div className="notice error"><Icon name="close" />{error}</div>}
-    {(mountError || !plugin) && <div className="notice error"><Icon name="close" />{mountError || "这项练习暂时无法打开，请稍后重试。"}</div>}
+    {(mountError || !plugin) && <div className="notice error"><Icon name="close" />{mountError || "This practice could not be opened. Please try again later."}</div>}
     {saveError && <div className="notice error"><Icon name="close" />{saveError}</div>}
     <div className="practice-host" ref={host} />
     {timeoutState !== "idle" && !result && <div className="exam-exit-overlay" role="presentation">
-      <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label="Time expired">
-        <h2>{timeoutState === "submitting" ? "Time expired" : "自动提交失败"}</h2>
-        <p>{timeoutState === "submitting" ? "考试时间已到，正在保存并提交答案…" : (error || "网络异常，答案尚未提交。请重试。")}</p>
-        {timeoutState === "failed" && <div className="exam-exit-actions"><button type="button" className="button button-primary" onClick={retryTimeoutSubmit}>重新提交</button></div>}
+      <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label={timeoutState === "submitting" ? "Time expired" : "Automatic submission failed"}>
+        <h2>{timeoutState === "submitting" ? "Time expired" : "Automatic submission failed"}</h2>
+        <p>{timeoutState === "submitting" ? "Your test time has ended. Your answers are being saved and submitted…" : "Your answers were not submitted automatically and remain saved as a draft. Select Retry to submit them."}</p>
+        {timeoutState === "failed" && error && <p className="exam-exit-detail" lang="zh-CN">{error}</p>}
+        {timeoutState === "failed" && <div className="exam-exit-actions"><button type="button" className="button button-primary" onClick={retryTimeoutSubmit}>Retry submission</button></div>}
       </div>
     </div>}
     {submitting && !result && timeoutState === "idle" && <div className="exam-exit-overlay" role="presentation">
       <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label="Submitting answers">
-        <h2>Submitting…</h2>
-        <p>正在保存并提交答案，请稍候。</p>
+        <h2>Submitting your answers…</h2>
+        <p>Your answers are being saved and submitted. Please wait.</p>
       </div>
     </div>}
     {result && <ResultCauses session={session} onCause={onCause} onBack={onBack} busy={busy} saving={saving} />}
     {exitOpen && <div className="exam-exit-overlay" role="presentation" onClick={() => setExitOpen(false)}>
-      <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label="Exit practice" onClick={(event) => event.stopPropagation()}>
+      <div className="exam-exit-dialog" role="dialog" aria-modal="true" aria-label={mock ? "Exit test" : "Exit practice"} onClick={(event) => event.stopPropagation()}>
         <h2>{mock ? "Exit test?" : "Exit practice?"}</h2>
         <p>Leaving now will discard this attempt’s answers and timer. You can continue the test or exit this attempt.</p>
         <div className="exam-exit-actions">

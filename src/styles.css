@@ -133,6 +133,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .page-main { min-height: 100vh; margin-left: var(--rail); transition: margin-right .2s ease, margin-left .2s ease; }
 .app-frame.coach-open .page-main { margin-right: 376px; }
+/* 机考工作区与考前准备页：导师抽屉覆盖在内容上，不推挤 100vh 固定的考试布局 */
+.app-frame.exam-active.coach-open .page-main { margin-right: 0; }
 /* 侧边栏收起：整条栏向左滑出视野，主内容补满全宽。
    位移用 var(--rail) 的负值，不用百分比——收起后自身宽度不变，百分比会算错。 */
 .app-frame.rail-hidden .side-rail { transform: translateX(calc(var(--rail) * -1)); }
@@ -441,6 +443,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .exam-exit-actions .button { width: 100%; }
 .exam-exit-discard { border-color: #e2c4bd; color: var(--danger); }
 .exam-exit-discard:hover:not(:disabled) { border-color: #d9a79c; background: var(--danger-tint); }
+/* 失败详情：英文框架内展示服务端返回的中文诊断信息 */
+.exam-exit-dialog .exam-exit-detail { margin: -10px 0 14px; color: var(--exam-muted); font-size: var(--text-xs); }
 .exam-clock.is-urgent { border-color: #e0a15a; background: #fff6e8; color: var(--exam-warn); }
 .exam-clock.is-expired { border-color: #d98980; background: #fdefee; color: #a33b30; }
 .exam-mode .mock-banner { margin-top: 9px; padding: 8px 12px; border-color: var(--exam-line); background: #eef3f7; color: #41525f; font-size: var(--text-xs); }
@@ -575,7 +579,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .exam-blank { display: inline-flex; align-items: baseline; gap: 6px; margin: 0 4px; }
 .exam-blank-num { color: var(--exam-accent); font-variant-numeric: tabular-nums; font-weight: 700; }
 .exam-blank input { width: 15ch; min-width: 10ch; max-width: 32ch; padding: 2px 6px 3px; border: 0; border-bottom: 2px solid #7d8b96; background: #f4f8fb; color: var(--exam-ink); font-size: var(--text-base); }
-.exam-blank input:focus { border-bottom-color: var(--exam-accent); outline: none; background: #eaf2f8; }
+.exam-blank input:focus { border-bottom-color: var(--exam-accent); background: #eaf2f8; }
 .exam-blank.is-wrong input { border-bottom-color: #b42318; background: #fff1ef; color: #9e2f26; }
 .exam-blank.is-correct input { border-bottom-color: #267043; background: #eff8f1; color: #246a3d; }
 .exam-inline-answer-key { color: #246a3d; font-size: .82em; font-weight: 650; white-space: nowrap; }
