@@ -30,6 +30,16 @@ const railHiddenKey = "ielts-rail-hidden";
 const errorMessage = (value: unknown) => value instanceof Error ? value.message : "刚才没有完成，请重试。";
 const percent = (value: number, total: number) => total ? Math.round(value / total * 100) : 0;
 const monthDay = (date: string) => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date(date + "T12:00:00"));
+const themeKey = "ielts-theme";
+type ThemeMode = "system" | "light" | "dark";
+const themeOptions: Array<{ value: ThemeMode; label: string }> = [{ value: "system", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" }];
+/* 与 index.html 的防闪烁脚本保持同一解析算法，两处需同步修改 */
+const applyTheme = (mode: ThemeMode) => {
+  const dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  if (dark) document.documentElement.dataset.theme = "dark";
+  else delete document.documentElement.dataset.theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0f141a" : "#f4f6f8");
+};
 
 export function App() {
   const [page, setPage] = useState<Page>("home");
@@ -52,6 +62,10 @@ export function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [bootToken, setBootToken] = useState(0);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem(themeKey);
+    return stored === "light" || stored === "dark" ? stored : "system";
+  });
   const loaded = useRef(false);
   const performing = useRef(false);
   const coachSending = useRef(false);
@@ -99,6 +113,16 @@ export function App() {
     });
     return () => setUnauthorizedHandler(undefined);
   }, []);
+
+  /* 主题解析：只在偏好或系统配色真实变化时重导出，与首帧内联脚本同算法（幂等）。 */
+  useEffect(() => {
+    applyTheme(themeMode);
+    if (themeMode !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onSchemeChange = () => applyTheme("system");
+    media.addEventListener("change", onSchemeChange);
+    return () => media.removeEventListener("change", onSchemeChange);
+  }, [themeMode]);
 
   useEffect(() => {
     if (!authReady || !authenticated || loaded.current) return;
@@ -340,7 +364,7 @@ export function App() {
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
       {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} pendingAttempt={pendingAttempt} />}
-      {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} />}
+      {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} themeMode={themeMode} onThemeChange={(mode) => { setThemeMode(mode); localStorage.setItem(themeKey, mode); }} />}
       {page === "preparation" && preparation && <ExamPreparation key={preparation.activity.id} preparation={preparation} busy={busy} onBack={() => { setPreparation(undefined); setPage(workspaceReturnPage); setError(""); }} onStart={launchPreparation} />}
       {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} />}
     </main>
@@ -494,13 +518,14 @@ function ProfileForm({ value, busy, saved, error, onChange, onSubmit }: { value:
     <label className="field"><span>每日可投入时间</span><select className="input" value={value.dailyMinutes} onChange={(event) => onChange({ ...value, dailyMinutes: Number(event.target.value) })}>{[15, 20, 30, 45, 60, 90, 120, 180].map((minutes) => <option key={minutes} value={minutes}>{minutes} 分钟</option>)}</select></label>
   </div></fieldset><div className="profile-form-actions"><p className={"profile-save-feedback" + (error ? " is-error" : "")} role={error ? "alert" : "status"}>{busy ? "正在保存目标，请稍候…" : error || (saved ? "目标已保存。" : "")}</p><button type="submit" className="button button-primary" disabled={busy || saved}>{busy ? "保存中…" : saved ? "已保存" : "保存目标"} <Icon name={saved ? "circle-check" : "arrow"} size={15} /></button></div></form>;
 }
-function SettingsPage({ data, busy, error, onSave, onLogout }: { data: BootstrapData; busy: boolean; error: string; onSave: (value: Omit<BootstrapData["profile"], "id" | "updatedAt">) => Promise<boolean>; onLogout: () => void }) {
+function SettingsPage({ data, busy, error, onSave, onLogout, themeMode, onThemeChange }: { data: BootstrapData; busy: boolean; error: string; onSave: (value: Omit<BootstrapData["profile"], "id" | "updatedAt">) => Promise<boolean>; onLogout: () => void; themeMode: ThemeMode; onThemeChange: (mode: ThemeMode) => void }) {
   const [{ value: form, saved }, updateForm] = useReducer(goalFormReducer, { value: data.profile, dirty: false, saved: false });
   useEffect(() => {
     updateForm({ type: "sync", value: data.profile });
   }, [data.profile]);
   return <div className="page-content"><PageHeader title="设置" subtitle="调整备考目标和每天的学习节奏。" />
     <section className="profile-form profile-edit"><div><h2>学习偏好</h2><p className="profile-note">这些设置会帮助我们安排适合你的练习时间。你可以随时调整。</p></div><ProfileForm value={form} busy={busy} saved={saved} error={error} onChange={(value) => updateForm({ type: "change", value })} onSubmit={(event) => { event.preventDefault(); if (!busy && !saved) void onSave({ ...form, setupComplete: true }).then((ok) => { if (ok) updateForm({ type: "saved", value: form }); }); }} /></section>
+    <section className="profile-form profile-edit"><div><h2>界面</h2><p className="profile-note">深色适合夜间刷题；考试界面始终与真实机考一致，保持浅色。</p></div><label className="field"><span>外观</span><select className="input" value={themeMode} onChange={(event) => onThemeChange(event.target.value as ThemeMode)}>{themeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></section>
     <section className="profile-form profile-edit account-panel"><div><h2>演示账号</h2><p className="profile-note">所有使用演示密码登录的人会共用这一份学习记录。</p></div><button className="button button-soft" onClick={onLogout}>退出登录</button></section>
   </div>;
 }

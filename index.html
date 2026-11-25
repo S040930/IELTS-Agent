@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
+    <!-- 防闪烁：与 src/App.tsx 的 applyTheme 保持同一解析算法，两处需同步修改 -->
+    <script>
+      (function () {
+        var mode;
+        try { mode = localStorage.getItem("ielts-theme"); } catch (error) { mode = null; }
+        var dark = mode === "dark" || ((mode === "system" || !mode) && matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.dataset.theme = "dark";
+      })();
+    </script>
+    <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f4f6f8" />
     <meta name="description" content="听力与阅读机考练习、实时 AI 口语和学习复盘。" />
     <title>暖学 IELTS</title>

@@ -10,6 +10,7 @@
   -moz-osx-font-smoothing: grayscale;
   font-optical-sizing: auto;
   font-weight: 400;
+  color-scheme: light;
 
   /* 颜色 */
   --page: #f4f6f8;
@@ -84,4 +85,50 @@
 
   /* 数字与微标签（学习面专用；机考钟面保持 sans + tabular-nums） */
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "PingFang SC", monospace;
+}
+
+/* ===== 深色（辅） =====
+   由 index.html 防闪烁脚本 / App 的 applyTheme 写 data-theme="dark" 激活。
+   覆盖全部可主题化令牌；不变量（--rail / --space-* / --radius-* / --text-* /
+   --leading-* / --font-mono）不重复声明。考试面在 05-exam 的冻结块中钉为浅色。 */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page: #0f141a;
+  --surface: #1a2129;
+  --surface-2: #121820;
+  --sidebar: #131a22;
+  --ink: #e8edf2;
+  --ink-soft: #cdd6e0;
+  --subtle-ink: #a9b4c2;
+  --muted: #8a95a3;
+  --line: #333e4a;
+  --line-strong: #47535f;
+  --hairline: #273039;
+  --border-input: #47535f;
+  --accent: #4aa8e0;
+  --accent-hover: #74bfea;
+  --accent-ink: #8fc9f0;
+  --accent-weak: rgba(74, 168, 224, .07);
+  --accent-soft: rgba(74, 168, 224, .13);
+  --accent-wash: #1d2b39;
+  --accent-fill: #0e5f96;
+  --highlight-surface: #1b2836;
+  --selected-surface: #22374b;
+  --neutral-fill: #2a323d;
+  --accent-tint: #1b2836;
+  --positive-fill: #173227;
+  --success: #4cc38a;
+  --success-tint: #12271b;
+  --danger: #e0796f;
+  --danger-tint: #331f22;
+  --glass-rail: rgba(15, 20, 26, .88);
+  --skeleton-sweep: rgba(255, 255, 255, .07);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow-md: 0 10px 28px -6px rgba(0, 0, 0, .50);
+  --shadow-lg: 0 14px 36px -8px rgba(0, 0, 0, .55);
+  --shadow-drawer: -12px 0 32px -8px rgba(0, 0, 0, .50);
+
+  --ring: 2px solid #4aa8e0;
 }
