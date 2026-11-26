@@ -4,7 +4,7 @@
    DOM 不消费它们；若考试 DOM 新引用了某个全局令牌，需把当时值补进这里。
    侧栏与导师抽屉在这两个包裹之外，正常跟随全局主题。仅省略 --rail 与
    --space-*（全站零消费，不参与冻结）。 */
-:where(.workspace-content.exam-mode, .exam-preparation) {
+:where(.workspace-content.exam-mode) {
   color-scheme: light;
   --page: #f5f5f7; --surface: #ffffff; --surface-2: #eff1f5; --sidebar: #f1f3f7;
   --ink: #1d1d1f; --ink-soft: #33343a; --subtle-ink: #51545c; --muted: #60636b;

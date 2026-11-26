@@ -1,15 +1,7 @@
-/* Shared controls and exam chrome */
-.button:active:not(:disabled), .quick-link:active { transform: scale(.98); }
-.quick-link:hover { box-shadow: var(--shadow-md); }
-.quick-link .library-icon { background: var(--accent-tint); color: var(--accent); }
-.exam-preparation { background: var(--page); }
-.exam-prep-header, .app-frame.exam-active .exam-bar, .app-frame.exam-active .exam-palette {
-  background: rgba(250,251,253,.94); backdrop-filter: blur(16px); border-color: var(--line);
-}
-.exam-prep-body { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); margin: 24px auto; }
-.exam-prep-header button, .exam-sound-controls button, .exam-prep-error button, .exam-review-actions button { border-color: var(--line-strong); border-radius: var(--radius-sm); }
-.exam-start-button, .exam-review-actions [data-confirm-submit] { border-color: var(--accent); border-radius: var(--radius-sm); background: var(--accent); color: white; }
-.exam-start-button:disabled { background: var(--surface-2); border-color: var(--line); color: var(--muted); }
+/* Shared controls and exam chrome.
+   考试作答面（.workspace-content.exam-mode 内）保持真机复刻；此处只补通用状态，
+   考前准备页跟随学习面的卡片体系。 */
+.speech-transcript li { animation: page-in-soft .18s ease-out both; }
 .exam-section-option.is-active, .exam-test-brand { color: var(--accent-ink); }
 .exam-section-option.is-active::after { background: var(--accent); }
 .app-frame.exam-active .exam-part-strip, .app-frame.exam-active .exam-audio-bar { background: var(--surface-2); border-color: var(--line); border-radius: var(--radius-sm); }
@@ -18,13 +10,5 @@
 .exam-submit:not(.is-submitted) { color: var(--accent-ink); background: var(--accent-wash); border-radius: var(--radius-sm); }
 .exam-review-dialog, .exam-tools-popover { border-radius: var(--radius-md); border-color: var(--line); box-shadow: var(--shadow-md); }
 .exam-q-explanation[open] { border-color: var(--accent); border-radius: 5px; background: var(--accent-tint); }
-/* 考试弹层保留原 page-in（复刻行为）；口语转写是学习面，走 2px 轻位移 */
+/* 考试弹层保留原 page-in（复刻行为） */
 .exam-review-dialog[open], .exam-tools-menu[open] .exam-tools-popover { animation: page-in .18s ease-out both; }
-.speech-transcript li { animation: page-in-soft .18s ease-out both; }
-@media (max-width: 1000px) {
-  .quick-links { grid-template-columns: 1fr; gap: 8px; }
-  .quick-link { padding: 10px 14px; }
-}
-@media (max-width: 600px) {
-  .exam-prep-body { width: calc(100% - 20px); padding: 19px 14px; margin: 12px auto; }
-}

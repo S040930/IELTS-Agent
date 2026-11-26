@@ -88,7 +88,7 @@ function DemoPlayer({ part, topic, onExit, onReplay }: Props & { onReplay: () =>
   };
 
   return <section className="page-content speech-page">
-    <header className="page-title-row"><div><h1>{complete ? "示例复盘" : "口语演示"}</h1>
+    <header className="page-title-row"><div><p className="page-eyebrow">Speaking · Demo</p><h1>{complete ? "示例复盘" : "口语演示"}</h1>
       <p className="page-subtitle">本地示例 · 无需麦克风，演示结果不计入练习记录。</p></div></header>
     <audio ref={player} src={"/assets/speaking-demo/" + topic.demo + ".mp3"} preload="auto" muted={quiet} />
     {complete ? <>

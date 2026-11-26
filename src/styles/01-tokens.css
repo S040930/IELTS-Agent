@@ -1,7 +1,11 @@
 /* ===== ① 设计令牌 ===== */
-/* 「仪器盘面」冷调体系：灰阶纸面 + 白面板 + 发丝线分层；冰蓝只承担操作与状态。 */
+/* 清爽产品面：浅灰蓝画布 + 白色卡片 + 靛蓝主色；圆角 10 / 细边 / 轻投影。
+   明度分四层，避免整页糊成一片白：
+   画布（--page，最暗）< 卡片内凹槽（--surface-2）< 卡片（--surface，最亮），
+   另有一块靛蓝像素（hero / 到期复习卡）作为每页的视觉锚点。
+   考试作答面不消费这些值（见 05-exam 的冻结块）。 */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Inter, system-ui, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color: var(--ink);
   background: var(--page);
   font-synthesis: none;
@@ -12,49 +16,96 @@
   font-weight: 400;
   color-scheme: light;
 
-  /* 颜色 */
-  --page: #f4f6f8;
+  /* 颜色：明度阶梯 */
+  --page: #eaeef6;
   --surface: #ffffff;
-  --surface-2: #eaeef2;
-  --sidebar: #edf1f5;
+  --surface-2: #f3f5fa;
+  --surface-3: #e5e9f2;
+  --sidebar: #ffffff;
   --rail: 232px;
-  --ink: #171a20;
-  --ink-soft: #2c313a;
-  --subtle-ink: #4a505c;
-  --muted: #5c6470;
-  --line: #d3dae1;
-  --line-strong: #b8c2cc;
-  --hairline: #e3e8ed;
-  --border-input: #b8c2cc;
-  --accent: #0b6fae;
-  --accent-hover: #095c92;
-  --accent-ink: #075180;
-  --accent-weak: rgba(11, 111, 174, .05);
-  --accent-soft: rgba(11, 111, 174, .09);
-  --accent-wash: #e7f0f6;
-  --accent-fill: #0b6fae;
-  --highlight-surface: #eaf2f8;
-  --selected-surface: #d6e6f0;
-  --neutral-fill: #e5eaf0;
-  --accent-tint: #eaf2f8;
-  --positive-fill: #d9eee2;
-  --success: #197a54;
-  --success-tint: #e2f1e8;
-  --danger: #b3303c;
-  --danger-tint: #faecee;
-  --glass-rail: rgba(237, 241, 245, .88);
-  --skeleton-sweep: rgba(255, 255, 255, .62);
+
+  /* 文字：五级灰度，标题与正文拉开 */
+  --ink: #0f131c;
+  --ink-soft: #2b3240;
+  --subtle-ink: #414a5a;
+  --muted: #5d6678;
+
+  /* 描边：卡片比发丝线深一档，画布变深后仍看得见边界 */
+  --line: #e0e5ef;
+  --hairline: #edf0f7;
+  --line-strong: #c4cbda;
+  --rule: #0f131c;
+  --border-input: #cfd6e3;
+
+  /* 主色：靛蓝，wash 用于选中态，tint 用于面板 */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-ink: #4338ca;
+  --accent-weak: rgba(79, 70, 229, .07);
+  --accent-soft: rgba(79, 70, 229, .12);
+  --accent-wash: #e6e8fd;
+  --accent-fill: #4f46e5;
+  --accent-tint: #eef1fe;
+  --accent-line: #c5c4f7;
+  --highlight-surface: #f4f5ff;
+  --selected-surface: #dfe2fc;
+  --neutral-fill: #eceff6;
+
+  /* 品牌渐变：标志、完成环、节标题标记共用，是这套界面的识别点 */
+  --brand-from: #6366f1;
+  --brand-via: #7c3aed;
+  --brand-to: #2563eb;
+  --gradient-brand: linear-gradient(135deg, #6366f1 0%, #7c3aed 52%, #2563eb 100%);
+  /* 面板渐变：面积大，去掉中间的紫调；比主色按钮淡一档，避免整块压过页面 */
+  --gradient-panel: linear-gradient(150deg, #5854ee 0%, #4f46e5 58%, #2f5fe0 100%);
+  --ring-track: rgba(79, 70, 229, .18);
+  --gradient-ring: conic-gradient(from -90deg, #6366f1 0%, #7c3aed calc(var(--p, 0) * .55%), #2563eb calc(var(--p, 0) * 1%), var(--ring-track) 0);
+
+  /* 画布光：左上角一层极淡靛蓝，给整页一点光源方向 */
+  --canvas-glow: radial-gradient(1100px 520px at 12% -8%, rgba(99, 102, 241, .10), transparent 62%);
+
+  /* 英雄条：淡靛蓝面板，介于画布和白卡之间的一层中间调 */
+  --hero-from: #e9ecfe;
+  --hero-via: #eef2fe;
+  --hero-to: #e6efff;
+
+  /* 技能色：给图标块和标记上色，避免满屏灰 */
+  --tone-listening: #1d4ed8;
+  --tone-listening-tint: #e3edff;
+  --tone-reading: #0b6b60;
+  --tone-reading-tint: #d9f4ef;
+  --tone-speaking: #b8440f;
+  --tone-speaking-tint: #ffe9d8;
+  --tone-review: #b3123f;
+  --tone-review-tint: #ffe1e8;
+
+  --positive-fill: #e9f9ef;
+  --success: #0f7a44;
+  --success-tint: #e6f7ee;
+  --warning: #b45309;
+  --warning-tint: #fff4e5;
+  --warning-line: #f0cfa8;
+  --danger: #cf2330;
+  --danger-tint: #fdeded;
+  --danger-line: #f3c3c3;
+
+  --glass-rail: #ffffff;
+  --skeleton-sweep: rgba(15, 19, 28, .045);
 
   /* 圆角 */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
   --radius-pill: 999px;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(15, 20, 26, .06);
-  --shadow-md: 0 10px 28px -6px rgba(15, 20, 26, .16);
-  --shadow-drawer: -12px 0 32px -8px rgba(15, 20, 26, .18);
+  /* 阴影：卡片浮在灰画布上，投影要看得见；浮层更深 */
+  --shadow-xs: 0 1px 2px rgba(15, 19, 28, .06);
+  --shadow-sm: 0 1px 2px rgba(15, 19, 28, .05), 0 4px 12px -6px rgba(15, 19, 28, .14);
+  --shadow-md: 0 18px 40px -20px rgba(15, 19, 28, .30), 0 2px 8px rgba(15, 19, 28, .05);
+  --shadow-lg: 0 32px 64px -28px rgba(15, 19, 28, .34);
+  --shadow-drawer: -16px 0 48px -20px rgba(15, 19, 28, .22);
 
   /* 字阶 */
   --text-micro: 11px;
@@ -63,13 +114,31 @@
   --text-base: 14px;
   --text-md: 16px;
   --text-lg: 20px;
-  --leading-normal: 1.7;
+  --text-xl: 26px;
+  --display: clamp(28px, 2.6vw, 36px);
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.6;
+  --leading-relaxed: 1.8;
+
+  --tracking-display: -.02em;
+  --tracking-label: .08em;
+
+  /* 间距 */
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 40px;
+  --space-3xl: 64px;
 
   /* 焦点环 */
-  --ring: 2px solid #0b6fae;
+  --ring: 3px solid rgba(79, 70, 229, .35);
 
-  /* 数字与微标签（学习面专用；机考钟面保持 sans + tabular-nums） */
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "PingFang SC", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Inter, system-ui, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 /* ===== 深色（辅） =====
@@ -79,40 +148,70 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --page: #0f141a;
-  --surface: #1a2129;
-  --surface-2: #121820;
-  --sidebar: #131a22;
-  --ink: #e8edf2;
-  --ink-soft: #cdd6e0;
-  --subtle-ink: #a9b4c2;
-  --muted: #8a95a3;
-  --line: #333e4a;
-  --line-strong: #47535f;
-  --hairline: #273039;
-  --border-input: #47535f;
-  --accent: #4aa8e0;
-  --accent-hover: #74bfea;
-  --accent-ink: #8fc9f0;
-  --accent-weak: rgba(74, 168, 224, .07);
-  --accent-soft: rgba(74, 168, 224, .13);
-  --accent-wash: #1d2b39;
-  --accent-fill: #0e5f96;
-  --highlight-surface: #1b2836;
-  --selected-surface: #22374b;
-  --neutral-fill: #2a323d;
-  --accent-tint: #1b2836;
-  --positive-fill: #173227;
-  --success: #4cc38a;
-  --success-tint: #12271b;
-  --danger: #e0796f;
-  --danger-tint: #331f22;
-  --glass-rail: rgba(15, 20, 26, .88);
-  --skeleton-sweep: rgba(255, 255, 255, .07);
+  --page: #0a0d13;
+  --surface: #151922;
+  --surface-2: #1c212c;
+  --surface-3: #252b38;
+  --sidebar: #151922;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
-  --shadow-md: 0 10px 28px -6px rgba(0, 0, 0, .50);
-  --shadow-drawer: -12px 0 32px -8px rgba(0, 0, 0, .50);
+  --ink: #f5f7fb;
+  --ink-soft: #dbe0ea;
+  --subtle-ink: #b7bfcc;
+  --muted: #8a93a4;
 
-  --ring: 2px solid #4aa8e0;
+  --line: #262c38;
+  --hairline: #1d222c;
+  --line-strong: #3b4353;
+  --rule: #f5f7fb;
+  --border-input: #3b4353;
+
+  --accent: #8b95fb;
+  --accent-hover: #a9b2ff;
+  --accent-ink: #aab4ff;
+  --accent-weak: rgba(139, 149, 251, .10);
+  --accent-soft: rgba(139, 149, 251, .18);
+  --accent-wash: #23264a;
+  --accent-fill: #4f46e5;
+  --accent-tint: #191d33;
+  --accent-line: #3a3f78;
+  --highlight-surface: #1a1e30;
+  --selected-surface: #2a2f52;
+  --neutral-fill: #252b38;
+
+  --gradient-panel: linear-gradient(150deg, #4f46e5 0%, #4338ca 58%, #2563eb 100%);
+  --ring-track: rgba(139, 149, 251, .24);
+  --canvas-glow: radial-gradient(1100px 520px at 12% -8%, rgba(99, 102, 241, .16), transparent 62%);
+  --hero-from: #1c2040;
+  --hero-via: #181c2e;
+  --hero-to: #141d33;
+
+  --tone-listening: #8fb2ff;
+  --tone-listening-tint: #16223c;
+  --tone-reading: #5ad6c6;
+  --tone-reading-tint: #102a28;
+  --tone-speaking: #fbbf8a;
+  --tone-speaking-tint: #2c1c12;
+  --tone-review: #fb9bb0;
+  --tone-review-tint: #2e1520;
+
+  --positive-fill: #12261a;
+  --success: #4ade80;
+  --success-tint: #0f2419;
+  --warning: #fbbf24;
+  --warning-tint: #291d0e;
+  --warning-line: #443017;
+  --danger: #ff9191;
+  --danger-tint: #2b1215;
+  --danger-line: #431f22;
+
+  --glass-rail: #151922;
+  --skeleton-sweep: rgba(255, 255, 255, .05);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .45);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5), 0 4px 14px -8px rgba(0, 0, 0, .7);
+  --shadow-md: 0 18px 44px -22px rgba(0, 0, 0, .85), 0 2px 8px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 32px 70px -30px rgba(0, 0, 0, .9);
+  --shadow-drawer: -16px 0 48px -20px rgba(0, 0, 0, .7);
+
+  --ring: 3px solid rgba(139, 149, 251, .45);
 }

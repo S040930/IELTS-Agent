@@ -1,47 +1,74 @@
 /* ===== ⑧ 响应式 ===== */
 @media (min-width: 1600px) {
-  .page-content { padding-right: 64px; padding-left: 64px; }
-  .coach-drawer { width: 392px; }
+  .page-content { padding-right: 56px; padding-left: 56px; }
+  .coach-drawer { width: 420px; }
+  .app-frame.coach-open .page-main { margin-right: 420px; }
 }
 
 @media (max-width: 1250px) {
-  :root { --rail: 210px; }
-  .side-rail { width: var(--rail); }
-  .page-main { margin-left: var(--rail); }
-  .app-frame.coach-open .page-main { margin-right: 350px; }
-  .coach-drawer { width: 350px; }
-  .page-content { padding-right: 31px; padding-left: 31px; }
-  .task-row { grid-template-columns: 58px minmax(0, 1fr) minmax(55px, auto) auto; gap: 12px; }
-  .task-index { font-size: 28px; }
+  :root { --rail: 208px; }
+  .page-content { padding-right: 28px; padding-left: 28px; }
+  .app-frame.coach-open .page-main { margin-right: 352px; }
+  .coach-drawer { width: 352px; }
+  .task-row { grid-template-columns: 32px minmax(0, 1fr) auto auto; gap: 12px; }
+  .hero-card h2 { font-size: 19px; }
+}
+
+/* 双栏在中等宽度并成一栏，右栏改成横向并排 */
+@media (max-width: 1180px) {
+  .home-body { grid-template-columns: minmax(0, 1fr); }
+  .home-side { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 表格列在中等宽度放不下：题库行改为两段式，元信息挤到标题下方一行 */
+@media (max-width: 1080px) {
+  /* 左栏筛选在中等宽度改为并排两张卡 */
+  .library-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .library-toolbar, .library-side, .library-main { grid-row: auto; grid-column: 1; }
+  .library-side { position: static; grid-template-columns: repeat(2, minmax(0, 268px)); justify-content: start; }
+  .library-head { display: none; }
+  .library-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 40px 12px 16px; }
+  .library-body { flex: 1 1 240px; }
+  .library-cell:empty { display: none; }
+  .library-cell + .library-cell::before { margin-right: 8px; color: var(--line-strong); content: "·"; }
+  .library-cell:empty + .library-cell::before { content: none; }
+  .library-row > .library-cell:nth-child(3) { justify-self: auto; }
+  .library-open { padding-right: 16px; }
 }
 
 @media (max-width: 900px) {
-  :root { --rail: 70px; }
-  .side-rail { width: var(--rail); align-items: center; padding: 17px 7px 12px; }
-  /* 窄屏下品牌居中，折叠按钮改为常规流内元素，避免与品牌图标重叠 */
-  .rail-collapse { position: static; margin-bottom: 10px; }
-  .brand { justify-content: center; padding: 0; margin: 2px 0 23px; }
-  .brand-name, .local-note span { display: none; }
+  :root { --rail: 76px; }
+  /* 窄屏侧栏只留图标 */
+  .side-rail { align-items: center; padding: 12px 8px; }
+  .rail-collapse { position: static; margin: 0 auto 8px; }
+  .brand { grid-template-columns: 1fr; grid-template-rows: auto; justify-items: center; margin: 0 0 14px; padding: 0; }
+  .brand::before { grid-column: 1; grid-row: 1; width: 30px; height: 30px; font-size: 14px; }
+  .brand-name, .brand-domain { display: none; }
   .nav-list { width: 100%; }
-  /* 竖排图标+标签：触屏不依赖 hover/title 也可读（统一原 ≤600 的竖排方案到整个窄屏档，标签提到 10px） */
-  .nav-button { width: 52px; min-height: 47px; flex-direction: column; justify-content: center; gap: 1px; padding: 0; }
-  .nav-button svg { flex-basis: 21px; width: 21px; height: 21px; }
-  .nav-button .nav-copy { display: block; font-size: 10px; line-height: 13px; }
-  .nav-button.active::before { left: -3px; }
-  .nav-divider { width: 42px; margin-right: 0; margin-left: 0; }
-  .local-note { justify-content: center; padding: 11px 0 0; }
-  .page-main { margin-left: var(--rail); }
-  .app-frame.coach-open .page-main { margin-right: 0; }
-  .page-content { padding: 34px 26px 72px; }
-  .coach-drawer { width: min(390px, 92vw); box-shadow: var(--shadow-md); }
+  .nav-button { grid-template-columns: 1fr; justify-items: center; min-height: 44px; padding: 0; }
+  .nav-copy { display: none; }
+  .nav-button svg { width: 20px; height: 20px; }
+  .nav-divider { margin: 10px 6px; }
+  .local-note { display: none; }
+  .page-content { padding: 24px 22px 64px; }
+  .hero-card { grid-template-columns: 1fr; }
+  .hero-progress { grid-auto-flow: column; align-items: center; justify-self: start; gap: 12px; }
+  .quick-links { grid-template-columns: 1fr; }
+  .data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cause-row { grid-template-columns: 1fr; gap: 12px; }
   .cause-fields { grid-template-columns: 1fr 1fr; }
   .cause-fields .button { grid-column: 2; justify-self: end; }
-  .library-row { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; }
-  .library-meta { grid-column: 2; grid-row: 2; justify-content: flex-start; max-width: none; }
-  .library-row > .button { grid-column: 3; grid-row: 1; }
-  .skeleton-brand { width: 32px; }
-  .skeleton-main { padding: 34px 26px; }
+  /* 设置页两栏在上限处并成一栏 */
+  .profile-form { grid-template-columns: 1fr; row-gap: 14px; padding: 18px 18px 20px; }
+  .profile-form > * { grid-column: 1; }
+  .profile-form > :first-child { grid-row: auto; }
+  .mock-card { grid-template-columns: 46px minmax(0, 1fr); }
+  .mock-card > .button { grid-column: 2; justify-self: start; }
+  .review-card { grid-template-columns: 38px minmax(0, 1fr); }
+  .review-card > .button { grid-column: 2; justify-self: start; }
+  .skeleton-rail { padding: 20px 8px; }
+  .skeleton-brand { width: 40px; }
+  .skeleton-main { padding: 24px 22px; }
   /* 机考面：单列，文章限高，题号条落底横滚 */
   .workspace-content.exam-mode { height: auto; min-height: 100vh; padding: 10px 12px 14px; overflow: visible; }
   .exam-mode .practice-host { flex: none; }
@@ -61,63 +88,62 @@
 }
 
 @media (max-width: 600px) {
-  :root { --rail: 59px; }
-  .side-rail { width: var(--rail); padding-right: 4px; padding-left: 4px; }
-  .brand-stamp { width: 31px; height: 31px; }
-  .nav-button { width: 48px; }
-  .page-main { margin-left: var(--rail); }
-  .page-content { padding: 27px 16px 80px; }
-  .page-title-row { align-items: flex-start; margin-bottom: 23px; }
-  .page-title-row h1 { font-size: 22px; letter-spacing: 0; }
-  .page-subtitle { margin-top: 7px; font-size: var(--text-sm); }
-  .page-actions { justify-content: flex-end; }
-  .plan-context { align-items: flex-start; margin-bottom: 24px; font-size: var(--text-xs); }
+  :root { --rail: 64px; }
+  .side-rail { padding: 10px 5px; }
+  .nav-button { min-height: 40px; }
+  .page-content { padding: 20px 16px 72px; }
+  .page-title-row { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 18px; }
+  .page-title-row h1 { font-size: 23px; }
+  .page-eyebrow { margin-bottom: 8px; }
+  .page-subtitle { margin-top: 6px; font-size: 13px; }
+  .page-actions { padding-bottom: 0; }
+  .section-heading { margin-top: 20px; }
+  .task-row { grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; padding: 12px 14px; }
+  .task-index { width: 28px; height: 28px; font-size: 12px; }
+  .task-copy strong { font-size: 14px; }
+  .task-copy p { font-size: 12px; }
+  .task-time { display: none; }
+  .task-controls { grid-row: 1; grid-column: 3; }
+  .task-controls .button { min-height: 30px; padding-right: 10px; padding-left: 10px; }
+  .task-lock { display: none; }
+  .hero-card { padding: 18px; }
+  .hero-card h2 { font-size: 18px; }
+  .hero-ring { width: 68px; height: 68px; }
+  .hero-ring strong { font-size: 16px; }
+  .quick-link { padding: 12px 14px; }
+  .data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-side { grid-template-columns: minmax(0, 1fr); }
+  .plan-proposal { padding: 16px; }
   .plan-proposal-error { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
-  .plan-proposal-error > .button { grid-column: 1; grid-row: auto; justify-self: start; }
+  .plan-proposal-error > .button { grid-row: auto; grid-column: 1; justify-self: start; }
   .proposal-day h3 { flex-wrap: wrap; gap: 4px 12px; }
   .proposal-day li > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-  .proposal-day li strong, .proposal-day li span { overflow-wrap: anywhere; }
-  .plan-proposal-actions { flex-wrap: wrap; }
-  .section-heading { align-items: flex-start; }
-  .section-heading h2 { font-size: 19px; }
-  .inline-actions .text-action { min-height: 30px; padding-right: 4px; padding-left: 4px; font-size: var(--text-xs); }
-  .task-row { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; min-height: 94px; padding: 14px 12px; }
-  .task-index { font-size: 24px; }
-  .task-copy strong { font-size: var(--text-sm); }
-  .task-copy p { font-size: var(--text-xs); }
-  .task-time { display: none; }
-  .task-controls { grid-column: 3; grid-row: 1; }
-  .task-controls .button { min-height: 36px; padding-right: 10px; padding-left: 10px; font-size: var(--text-xs); }
-  .task-lock { display: none; }
-  .home-lower { grid-template-columns: 1fr; gap: 12px; margin-top: 27px; }
-  .home-lower-block { padding: 8px 1px; }
-  .home-lower-block + .home-lower-block { padding: 16px 1px 8px; border-top: 1px solid var(--line); border-left: 0; }
-  .home-lower-block h2 { font-size: 19px; }
-  .home-lower-block p { margin: 7px 0; font-size: var(--text-xs); }
-  .mode-pill { padding-right: 7px; padding-left: 7px; font-size: var(--text-xs); }
-  .library-toolbar { flex-direction: column; align-items: stretch; }
-  .library-filters { flex-direction: column; align-items: stretch; gap: 8px; }
-  .search-field { max-width: none; }
-  .filter-chips { justify-content: flex-start; }
-  .library-row { grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding: 14px 13px; }
-  .library-body { grid-column: 2; }
-  .library-meta { grid-column: 2; grid-row: auto; justify-content: flex-start; }
-  .library-row > .button { grid-column: 2; grid-row: auto; justify-self: start; margin-top: 4px; }
-  .mock-card { grid-template-columns: 42px minmax(0, 1fr); gap: 11px; padding: 15px 11px; }
-  .mock-card-icon { width: 39px; height: 39px; }
-  .mock-card > .button { grid-column: 2; justify-self: start; }
-  .review-card { grid-template-columns: 1fr; gap: 11px; }
-  .review-card > .button { justify-self: start; }
+  .plan-proposal-actions .button { flex: 1 1 auto; }
+  .library-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  /* 列向排列时清除行内的 flex-basis，否则输入框会被拉到 280px 高 */
+  .search-field { flex: 0 0 auto; width: 100%; max-width: none; }
+  .library-row { padding: 12px 34px 12px 12px; }
+  /* 窄屏标题允许两行，避免只剩半句话 */
+  .library-title-text { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .mock-card { grid-template-columns: 1fr; gap: 14px; padding: 16px; }
+  .mock-card > .button { grid-column: 1; justify-self: start; }
+  .review-card { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
+  .review-card > .button { grid-column: 1; justify-self: start; }
   .form-grid { grid-template-columns: 1fr; }
-  .profile-form { padding: 18px 14px; }
-  .profile-edit { padding: 17px 12px; }
-  .data-grid { grid-template-columns: 1fr 1fr; }
-  .evidence-row { grid-template-columns: 1fr auto; gap: 6px 11px; }
-  .evidence-row .evidence-meter { grid-column: 1 / -1; grid-row: 2; }
-  .attempt-row { font-size: var(--text-xs); }
+  .profile-form { padding: 16px; }
+  .data-stat { padding: 14px; }
+  .data-stat strong { font-size: 20px; }
+  .evidence-row { grid-template-columns: 1fr auto; padding: 12px 14px; }
+  .evidence-row .evidence-meter { grid-row: 2; grid-column: 1 / -1; }
+  .attempt-row { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 3px 10px; padding: 10px 14px; font-size: 12.5px; }
+  .attempt-row > .icon-tile { grid-row: 1 / span 2; }
+  .attempt-date { grid-row: 2; grid-column: 2; }
+  .attempt-row > span:not(.attempt-date):not(.icon-tile) { grid-row: 1; grid-column: 2; }
+  .attempt-result { grid-row: 1; grid-column: 3; }
+  .attempt-row .text-action { grid-row: 2; grid-column: 3; justify-self: end; }
   .cause-fields { grid-template-columns: 1fr; }
   .cause-fields .button { grid-column: auto; justify-self: start; }
-  .toast-region { right: 14px; bottom: 96px; }
+  .toast-region { right: 12px; bottom: 16px; }
   /* 机考面：触控目标放大 */
   .exam-bar { flex-wrap: wrap; row-gap: 7px; }
   .exam-bar-right { flex-wrap: wrap; row-gap: 6px; }
@@ -130,18 +156,10 @@
   .exam-audio-vol input { width: 56px; }
   .exam-report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .exam-skill-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .exam-skill-meter { grid-column: 1 / -1; grid-row: 2; }
+  .exam-skill-meter { grid-row: 2; grid-column: 1 / -1; }
 }
 
 /* ===== ⑨ 无障碍偏好 ===== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
-
-/* 超窄屏：空状态操作区单独成行，避免图标被挤到首行 */
-@media (max-width: 400px) {
-  .empty-callout { gap: 10px 12px; }
-  .empty-callout-copy { flex-basis: 140px; }
-  .empty-callout-actions { gap: 8px; }
-}
-

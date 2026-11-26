@@ -1,49 +1,62 @@
 /* ===== ③ 布局骨架 ===== */
-.app-frame { min-height: 100vh; background: var(--page); }
-.side-rail { position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; width: var(--rail); flex-direction: column; padding: 25px 16px 17px; background: var(--glass-rail); backdrop-filter: blur(18px); overflow-y: auto; border-right: 1px solid var(--line); transition: transform .2s ease; }
-.rail-collapse { position: absolute; top: 21px; right: 10px; display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; transition: background .16s ease, color .16s ease; }
-.rail-collapse:hover { background: var(--neutral-fill); color: var(--ink); }
+.app-frame { min-height: 100vh; background-color: var(--page); background-image: var(--canvas-glow); }
+
+/* 侧栏：白色面板，圆角行高亮 */
+.side-rail { position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; width: var(--rail); flex-direction: column; padding: 18px 12px 16px; overflow-y: auto; border-right: 1px solid var(--line); background: var(--surface); transition: transform .24s cubic-bezier(.2, .8, .2, 1); }
+.rail-collapse { position: absolute; top: 16px; right: 12px; display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--muted); cursor: pointer; transition: background .15s ease, color .15s ease; }
+.rail-collapse:hover { background: var(--surface-2); color: var(--ink); }
 .rail-collapse svg { transform: rotate(90deg); }
-.rail-toolbar { display: flex; padding: 16px 16px 0; }
-.rail-expand { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--subtle-ink); box-shadow: var(--shadow-sm); cursor: pointer; transition: background .16s ease, color .16s ease; }
-.rail-expand:hover { background: var(--neutral-fill); color: var(--ink); }
-.brand { display: flex; align-items: center; gap: 11px; padding: 0 14px; margin: 1px 0 34px; color: var(--ink); font-size: 20px; font-weight: 600; letter-spacing: 0; }
-.brand-stamp { display: grid; width: 32px; height: 32px; place-items: center; color: var(--accent); border: 1px solid var(--accent-soft); border-radius: var(--radius-sm); background: var(--accent-tint); }
-.nav-list { display: grid; gap: 7px; }
-.nav-button { position: relative; display: flex; width: 100%; min-height: 48px; align-items: center; gap: 14px; padding: 0 13px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--subtle-ink); font-size: var(--text-base); text-align: left; cursor: pointer; transition: background .16s ease, color .16s ease; }
-.nav-button svg { flex: 0 0 19px; width: 19px; height: 19px; color: var(--muted); }
+.rail-toolbar { display: flex; padding: 20px 0 0 24px; }
+.rail-expand { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); cursor: pointer; transition: background .15s ease, color .15s ease; }
+.rail-expand:hover { background: var(--accent-fill); color: #fff; }
+
+/* 品牌：方形标志 + 两行字标 */
+.brand { display: grid; grid-template-columns: 32px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; margin: 0 0 22px; padding: 4px 8px 0; }
+.brand::before { display: grid; width: 32px; height: 32px; grid-column: 1; grid-row: 1 / span 2; place-items: center; border-radius: 9px; background: var(--gradient-brand); color: #fff; content: "暖"; font-size: 15px; font-weight: 700; }
+.brand-name { grid-column: 2; grid-row: 1; color: var(--ink); font-size: 16px; font-weight: 700; letter-spacing: var(--tracking-display); line-height: 1.3; }
+.brand-domain { grid-column: 2; grid-row: 2; color: var(--muted); font-size: 10px; font-weight: 500; letter-spacing: .06em; line-height: 1.3; text-transform: uppercase; }
+
+.nav-list { display: grid; gap: 2px; }
+.nav-button { position: relative; display: grid; width: 100%; min-height: 38px; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 10px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--subtle-ink); font-size: 13.5px; text-align: left; cursor: pointer; transition: background .14s ease, color .14s ease; }
+.nav-index { display: none; }
+.nav-button svg { width: 18px; height: 18px; color: var(--muted); transition: color .14s ease; }
+.nav-copy { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-button:hover { background: var(--surface-2); color: var(--ink); }
+.nav-button:hover svg { color: var(--subtle-ink); }
 .nav-button.active { background: var(--accent-wash); color: var(--accent-ink); font-weight: 600; }
 .nav-button.active svg { color: var(--accent); }
-.nav-button.active::before { content: ""; position: absolute; top: 50%; left: 0; width: 3px; height: 22px; transform: translateY(-50%); border-radius: var(--radius-pill); background: var(--accent); }
-.nav-spacer { flex: 1; }
-.nav-divider { height: 1px; margin: 9px 14px 10px; background: var(--line-strong); }
-.local-note { display: flex; align-items: center; gap: 8px; padding: 12px 13px 0; color: var(--muted); font-size: var(--text-xs); }
-.local-note svg { width: 14px; height: 14px; }
+.nav-button.active::before { display: none; }
+.nav-spacer { flex: 0 0 auto; height: 0; }
+.nav-divider { height: 1px; margin: 12px 10px; background: var(--line); }
+.local-note { display: flex; align-items: center; gap: 8px; margin: auto 0 0; padding: 10px 10px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--muted); font-size: 11px; line-height: 1.4; }
+.local-note svg { width: 14px; height: 14px; flex: 0 0 14px; }
 
-.login-page { display: grid; min-height: 100vh; place-items: center; padding: 28px; background: radial-gradient(circle at 15% 12%, var(--accent-wash) 0, transparent 32%), var(--page); }
-.login-card { width: min(100%, 440px); padding: 40px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-md); }
-.login-mark { display: grid; width: 58px; height: 58px; place-items: center; margin-bottom: 24px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--accent-tint); color: var(--accent); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
-.login-card h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: 0; }
-.login-copy { margin: 10px 0 25px; color: var(--subtle-ink); line-height: 1.7; }
-.login-card .field { display: grid; gap: 8px; color: var(--ink-soft); font-size: var(--text-sm); }
-.login-card .input { min-height: 46px; padding: 0 13px; border: 1px solid var(--border-input); border-radius: var(--radius-sm); background: var(--surface); }
-.login-submit { width: 100%; margin-top: 17px; }
-.login-error { color: var(--danger); font-size: var(--text-sm); }
-.login-footnote { margin: 23px 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.7; }
+/* 登录页 */
+.login-page { display: grid; min-height: 100vh; place-items: center; padding: 32px; background: var(--page); background-image: radial-gradient(1200px 500px at 50% -10%, var(--accent-wash), transparent 70%); }
+.login-card { width: min(100%, 420px); padding: 36px 32px 30px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-md); }
+.login-mark { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 24px; padding: 6px 10px 6px 6px; border-radius: var(--radius-pill); background: var(--accent-wash); color: var(--accent-ink); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.login-mark::before { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 7px; background: var(--gradient-brand); color: #fff; content: "暖"; font-size: 12px; font-weight: 700; }
+.login-card h1 { margin: 0; color: var(--ink); font-size: 26px; font-weight: 700; letter-spacing: var(--tracking-display); line-height: 1.25; }
+.login-copy { margin: 10px 0 24px; color: var(--muted); font-size: 13.5px; line-height: 1.65; }
+.login-card .field { display: grid; gap: 7px; color: var(--ink-soft); font-size: 12px; }
+.login-card .field span { color: var(--subtle-ink); font-size: 12px; font-weight: 600; }
+.login-card .input { min-height: 44px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: var(--radius-md); background: var(--surface); }
+.login-card .input:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); outline-offset: 0; }
+.login-submit { width: 100%; margin-top: 18px; }
+.login-error { margin: 10px 0 0; color: var(--danger); font-size: 12px; }
+.login-footnote { margin: 22px 0 0; padding-top: 14px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 11.5px; line-height: 1.7; }
 .account-panel { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 
-.page-main { min-height: 100vh; margin-left: var(--rail); transition: margin-right .2s ease, margin-left .2s ease; }
-.app-frame.coach-open .page-main { margin-right: 376px; }
+.page-main { min-height: 100vh; margin-left: var(--rail); transition: margin-right .24s ease, margin-left .24s ease; }
+.app-frame.coach-open .page-main { margin-right: 392px; }
 /* 机考工作区与考前准备页：导师抽屉覆盖在内容上，不推挤 100vh 固定的考试布局 */
 .app-frame.exam-active.coach-open .page-main { margin-right: 0; }
 /* 侧边栏收起：整条栏向左滑出视野，主内容补满全宽。
    位移用 var(--rail) 的负值，不用百分比——收起后自身宽度不变，百分比会算错。 */
 .app-frame.rail-hidden .side-rail { transform: translateX(calc(var(--rail) * -1)); }
 .app-frame.rail-hidden .page-main { margin-left: 0; }
-.page-content { width: 100%; max-width: 1500px; margin: 0 auto; padding: 45px 54px 80px; animation: page-in-soft .23s cubic-bezier(.2,.75,.3,1) both; }
-.app-frame.rail-hidden .page-content { padding-top: 24px; }
+.page-content { width: 100%; max-width: 1240px; margin: 0 auto; padding: 32px 40px 72px; animation: page-in-soft .24s cubic-bezier(.2, .75, .3, 1) both; }
+.app-frame.rail-hidden .page-content { padding-top: 20px; }
 /* 学习面进场用 2px 轻位移；原 4px 的 page-in 保留给考试面弹层复用 */
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes page-in-soft { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
-
