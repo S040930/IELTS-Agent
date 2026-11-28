@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { scryptSync } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
+import { AccountsStore, sqliteQuery } from "../server/accounts-store.js";
 import { createLocalApp } from "../server/local-app.js";
 import type { Account, UsageSummary } from "../src/shared/accounts.js";
 
@@ -66,8 +69,8 @@ test("local accounts isolate learning history and attribute text and voice usage
   }
 
   const password = "a distinct test password";
-  async function register(username: string): Promise<Browser> {
-    const result = await request("/api/auth/register", undefined, "POST", { username, password });
+  async function register(email: string): Promise<Browser> {
+    const result = await request("/api/auth/register", undefined, "POST", { email, password });
     assert.equal(result.status, 201);
     const setCookie = result.headers.get("set-cookie")!;
     assert.match(setCookie, /HttpOnly; SameSite=Strict; Max-Age=604800/);
@@ -77,15 +80,30 @@ test("local accounts isolate learning history and attribute text and voice usage
   assert.equal((await request("/api/bootstrap", undefined, "GET", undefined, { cookie: "ielts_demo_session=legacy" })).status, 401);
   assert.equal((await request("/api/usage")).status, 401);
   assert.equal((await request("/api/auth/session")).body.account, null);
-  const a = await register("Learner-A");
-  const b = await register("learner-b");
-  assert.equal(a.account.username, "learner-a");
-  assert.equal((await request("/api/auth/register", undefined, "POST", { username: "LEARNER-A", password })).status, 409);
-  assert.equal((await request("/api/auth/login", undefined, "POST", { username: "learner-a", password: "wrong-password" })).status, 401);
-  const freshLogin = await request("/api/auth/login", undefined, "POST", { username: " LEARNER-A ", password });
+  assert.equal((await request("/api/auth/register", undefined, "POST", { username: "former-format", password })).status, 400);
+  assert.equal((await request("/api/auth/register", undefined, "POST", { email: "learner@bad..test", password })).status, 400);
+  const a = await register("Learner-A+ielts@Example.Test");
+  const b = await register("learner-b@example.test");
+  assert.equal(a.account.username, "learner-a+ielts@example.test");
+  assert.equal((await request("/api/auth/register", undefined, "POST", { email: " LEARNER-A+IELTS@example.test ", password })).status, 409);
+  assert.equal((await request("/api/auth/login", undefined, "POST", { identifier: a.account.username, password: "wrong-password" })).status, 401);
+  const freshLogin = await request("/api/auth/login", undefined, "POST", { identifier: " LEARNER-A+IELTS@EXAMPLE.TEST ", password });
   assert.equal(freshLogin.status, 200);
   assert.deepEqual(freshLogin.body.account, a.account);
   assert.equal((await request("/api/bootstrap", b, "GET", undefined, { "x-ielts-account": a.account.id })).status, 401);
+
+  const legacyAccount = { id: crypto.randomUUID(), username: "legacy-learner" };
+  const salt = "0".repeat(32);
+  const digest = scryptSync(password, salt, 64, { N: 32_768, maxmem: 64 * 1024 * 1024 }).toString("hex");
+  const accountDb = new DatabaseSync(join(directory, "accounts.sqlite"));
+  try { await new AccountsStore(sqliteQuery(accountDb)).createAccount(legacyAccount, salt + ":" + digest); }
+  finally { accountDb.close(); }
+  const legacyLogin = await request("/api/auth/login", undefined, "POST", { identifier: " Legacy-Learner ", password });
+  assert.equal(legacyLogin.status, 200);
+  assert.deepEqual(legacyLogin.body.account, legacyAccount);
+  const oldClient = await request("/api/auth/login", undefined, "POST", { username: legacyAccount.username, password });
+  assert.equal(oldClient.status, 200);
+  assert.deepEqual(oldClient.body.account, legacyAccount);
 
   const aBootstrap = (await request("/api/bootstrap", a)).body;
   const bBootstrap = (await request("/api/bootstrap", b)).body;

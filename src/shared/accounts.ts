@@ -1,5 +1,6 @@
 export interface Account {
   id: string;
+  /** Login identifier persisted for the account: email or a legacy username. */
   username: string;
 }
 

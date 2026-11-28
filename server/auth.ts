@@ -8,6 +8,16 @@ import { readJson, sendJson } from "./http-json.js";
 const cookieName = "ielts_account_session";
 const sessionSeconds = 7 * 86_400;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+const legacyUsername = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+const emailLocalPart = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/;
+const emailDomain = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+function validEmail(value: string): boolean {
+  const [local, domain, extra] = value.split("@");
+  return value.length <= 254 && local !== undefined && domain !== undefined && extra === undefined &&
+    local.length <= 64 && !local.startsWith(".") && !local.endsWith(".") && !local.includes("..") &&
+    emailLocalPart.test(local) && emailDomain.test(domain);
+}
 
 function tokenHash(req: IncomingMessage): string | undefined {
   const token = req.headers.cookie?.split(";").map((part) => part.trim())
@@ -54,9 +64,12 @@ export async function authenticate(req: IncomingMessage, res: ServerResponse, pa
     const register = path.endsWith("/register");
     if (req.headers["content-type"]?.split(";")[0] !== "application/json") throw new HttpError("请使用 JSON 提交账号。", 415);
     const body = await readJson(req, 4096);
-    const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+    const submitted = register ? body.email : body.identifier ?? body.username;
+    const identifier = typeof submitted === "string" ? submitted.trim().toLowerCase() : "";
     const password = typeof body.password === "string" ? body.password : "";
-    if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new HttpError("用户名需为 3–32 位英文字母、数字、点、下划线或连字符，并以字母或数字开头。");
+    if (!validEmail(identifier) && (register || !legacyUsername.test(identifier))) {
+      throw new HttpError(register ? "请输入有效的邮箱地址。" : "请输入有效的邮箱或原用户名。");
+    }
     if (password.length < (register ? 12 : 1) || Buffer.byteLength(password) > 256) {
       throw new HttpError(register ? "密码至少 12 个字符，且最多 256 字节。" : "请输入有效密码。");
     }
@@ -67,17 +80,17 @@ export async function authenticate(req: IncomingMessage, res: ServerResponse, pa
     }
     let account: Account;
     if (register) {
-      account = { id: randomUUID(), username };
+      account = { id: randomUUID(), username: identifier };
       const salt = randomBytes(16).toString("hex");
       const digest = await passwordHash(password, salt);
       if (!await store.createAccount(account, salt + ":" + digest.toString("hex"))) {
-        throw new HttpError("这个用户名已被使用。", 409);
+        throw new HttpError("这个邮箱已注册，可以直接登录。", 409);
       }
     } else {
-      const stored = await store.findAccount(username);
+      const stored = await store.findAccount(identifier);
       const [salt, digest] = stored?.passwordHash.split(":") ?? ["00000000000000000000000000000000", "00".repeat(64)];
       const matches = timingSafeEqual(Buffer.from(digest!, "hex"), await passwordHash(password, salt!));
-      if (!stored || !matches) throw new HttpError("用户名或密码不正确。", 401);
+      if (!stored || !matches) throw new HttpError("账号或密码不正确。", 401);
       account = { id: stored.id, username: stored.username };
     }
     const token = randomBytes(32).toString("base64url");

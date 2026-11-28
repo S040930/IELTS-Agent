@@ -1,6 +1,6 @@
 # Vercel 云端部署
 
-云端使用 Vite 静态前端、Node.js Function、Neon Postgres 和私有 Vercel Blob。用户自行注册，登录后可在不同设备访问本人的学习历史和 AI 用量。题库供所有登录账号使用。
+云端使用 Vite 静态前端、Node.js Function、Neon Postgres 和私有 Vercel Blob。新用户使用邮箱和密码注册，已有账号可以用原用户名登录。登录后可在不同设备访问本人的学习历史和 AI 用量。题库供所有登录账号使用。
 
 ## 需要准备
 

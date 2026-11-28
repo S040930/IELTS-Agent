@@ -6,7 +6,7 @@
 
 - Node.js 22.13 或更新版本；macOS、Windows 或 Linux。
 - `npm ci` 后运行 `npm run dev`。
-- 浏览器打开 http://127.0.0.1:5173。注册或登录后即可开始学习。账号和模型用量保存在 `.data/accounts.sqlite`，学习记录保存在 `.data/users/`。
+- 浏览器打开 http://127.0.0.1:5173。新用户使用邮箱和密码注册，已有账号可以用原用户名登录。账号和模型用量保存在 `.data/accounts.sqlite`，学习记录保存在 `.data/users/`。
 - 如需启用文本 AI，请创建 `.env` 并设置 `IELTS_AI_BASE_URL`、`IELTS_AI_MODEL` 和 `IELTS_AI_API_KEY`。
 
 本机数据不会自动上传到云端。题库内容包和安装说明见 [docs/content-package.md](docs/content-package.md)。

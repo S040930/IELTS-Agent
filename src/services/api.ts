@@ -99,8 +99,8 @@ export const api = {
     }
   },
   authSession: () => request<AuthSession>("/api/auth/session"),
-  login: (username: string, password: string) => request<AuthSession>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
-  register: (username: string, password: string) => request<AuthSession>("/api/auth/register", { method: "POST", body: JSON.stringify({ username, password }) }),
+  login: (identifier: string, password: string) => request<AuthSession>("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) }),
+  register: (email: string, password: string) => request<AuthSession>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
   logout: () => request<AuthSession>("/api/auth/logout", { method: "POST", body: "{}" }),
   usage: (signal?: AbortSignal) => request<UsageSummary>("/api/usage", { signal }),
   bootstrap: (signal?: AbortSignal) => bootstrapRequest("/api/bootstrap", { signal }),

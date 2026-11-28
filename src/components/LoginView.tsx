@@ -4,10 +4,10 @@ type Mode = "login" | "register";
 
 export function LoginView({ initialError, onSubmit }: {
   initialError: string;
-  onSubmit: (mode: Mode, username: string, password: string) => Promise<void>;
+  onSubmit: (mode: Mode, identifier: string, password: string) => Promise<void>;
 }) {
   const [mode, setMode] = useState<Mode>("login");
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
@@ -18,7 +18,7 @@ export function LoginView({ initialError, onSubmit }: {
     if (busy) return;
     setBusy(true);
     setError("");
-    try { await onSubmit(mode, username, password); }
+    try { await onSubmit(mode, identifier, password); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "暂时无法登录，请重试。"); }
     finally { setBusy(false); }
   }
@@ -26,12 +26,11 @@ export function LoginView({ initialError, onSubmit }: {
   return <main className="login-page"><section className="login-card">
     <div className="login-mark" aria-hidden="true">IELTS</div>
     <h1>{registering ? "创建暖学账号" : "欢迎回到暖学"}</h1>
-    <p className="login-copy">{registering ? "注册后即可开启你的个人学习空间。" : "登录后继续你的雅思练习。"}</p>
+    <p className="login-copy">{registering ? "使用邮箱创建你的个人学习账号。" : "登录后继续你的雅思练习。"}</p>
     <form onSubmit={(event) => void submit(event)}>
-      <label className="field"><span>用户名</span><input autoComplete="username" autoCapitalize="none" spellCheck={false}
-        className="input" value={username} onChange={(event) => setUsername(event.target.value)} required minLength={3} maxLength={32} autoFocus
-        aria-describedby={registering ? "username-requirements" : undefined} /></label>
-      {registering && <p className="login-hint" id="username-requirements">3–32 位英文字母、数字、点、下划线或连字符，以字母或数字开头。</p>}
+      <label className="field"><span>{registering ? "邮箱" : "邮箱或用户名"}</span><input type={registering ? "email" : "text"}
+        autoComplete="username" autoCapitalize="none" spellCheck={false} className="input" value={identifier}
+        onChange={(event) => setIdentifier(event.target.value)} required maxLength={254} autoFocus /></label>
       <label className="field"><span>密码</span><input autoComplete={registering ? "new-password" : "current-password"}
         className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)}
         minLength={registering ? 12 : undefined} maxLength={256} required aria-describedby={registering ? "password-requirements" : undefined} /></label>

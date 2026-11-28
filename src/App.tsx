@@ -93,8 +93,8 @@ export function App() {
   }, []);
 
   if (account === undefined) return <div className="loading-shell" aria-busy="true"><main className="skeleton-main"><span className="skeleton skeleton-heading" /><p className="loading-caption">正在检查登录状态…</p></main></div>;
-  if (!account) return <LoginView initialError={error} onSubmit={async (mode, username, password) => {
-    const session = await api[mode](username, password);
+  if (!account) return <LoginView initialError={error} onSubmit={async (mode, identifier, password) => {
+    const session = await api[mode](identifier, password);
     if (!session.account) throw new Error("会话尚未建立，请重试。");
     setRequestAccount(session.account.id);
     setAccount(session.account);
