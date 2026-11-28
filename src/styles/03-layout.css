@@ -60,3 +60,7 @@
 /* 学习面进场用 2px 轻位移；原 4px 的 page-in 保留给考试面弹层复用 */
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes page-in-soft { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+.login-card .field + .field, .login-hint + .field { margin-top: 14px; }
+.login-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.login-footnote { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

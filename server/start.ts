@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createApp } from "./index.js";
+import { createLocalApp } from "./local-app.js";
 
 async function loadLocalEnvironment(): Promise<void> {
   let contents: string;
@@ -18,7 +18,7 @@ async function loadLocalEnvironment(): Promise<void> {
 }
 
 await loadLocalEnvironment();
-const { server, close } = await createApp({ production: process.argv.includes("--production") });
+const { server, close } = await createLocalApp({ production: process.argv.includes("--production") });
 const port = Number(process.env.IELTS_SERVER_PORT ?? 4173);
 server.listen(port, "127.0.0.1", () => {
   process.stdout.write("IELTS local service listening at http://127.0.0.1:" + port + "\n");

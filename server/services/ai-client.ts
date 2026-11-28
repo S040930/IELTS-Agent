@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
 
+import { textUsage, type MeasuredUsage } from "./model-usage.js";
+
 export interface AiMessage { role: "system" | "user" | "assistant"; content: string }
 
 export class AiClient {
-  private readonly sessionId = process.env.IELTS_AI_SESSION_ID || randomUUID();
+  private readonly sessionId = randomUUID();
+
+  constructor(private readonly recordUsage?: (model: string, usage: MeasuredUsage) => Promise<void>) {}
 
   missingSettings(): string[] {
     const missing: string[] = [];
@@ -20,6 +24,7 @@ export class AiClient {
     const endpoint = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
     const url = new URL(endpoint);
     if (url.protocol !== "https:" && url.hostname !== "127.0.0.1" && url.hostname !== "localhost") throw new Error("AI 服务地址需要使用 HTTPS");
+    const model = process.env.IELTS_AI_MODEL!;
     let response: Response;
     try {
       response = await fetch(url, {
@@ -28,10 +33,10 @@ export class AiClient {
           authorization: `Bearer ${process.env.IELTS_AI_API_KEY}`,
           "content-type": "application/json",
           "user-agent": "ielts-self-study-demo/0.1.0",
-          "x-opencode-session": this.sessionId,
+          "x-opencode-session": this.recordUsage ? this.sessionId : process.env.IELTS_AI_SESSION_ID || this.sessionId,
         },
         body: JSON.stringify({
-          model: process.env.IELTS_AI_MODEL,
+          model,
           temperature: options.temperature ?? 0.3,
           max_tokens: options.maxTokens ?? 700,
           ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
@@ -62,7 +67,11 @@ export class AiClient {
       }
       throw new Error(`AI 服务返回 ${response.status}${detail ? `：${detail}` : ""}`);
     }
-    const body: unknown = await response.json();
+    const body: unknown = await response.json().catch(() => null);
+    if (this.recordUsage) {
+      const usage = body && typeof body === "object" && "usage" in body ? body.usage : undefined;
+      await this.recordUsage(model, textUsage(usage));
+    }
     if (!body || typeof body !== "object") throw new Error("AI 服务返回了无法识别的内容");
     const choices = (body as { choices?: Array<{ message?: { content?: unknown } }> }).choices;
     const content = choices?.[0]?.message?.content;

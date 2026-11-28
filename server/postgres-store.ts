@@ -1,3 +1,4 @@
+import { initializeAccounts } from "./accounts-store.js";
 import type { SpeakingRecord, SpeakingSummary } from "../src/shared/speaking.js";
 import { randomUUID } from "node:crypto";
 import type { Client } from "@neondatabase/serverless";
@@ -22,23 +23,23 @@ const bool = (value: unknown) => value === true || value === 1 || value === "1";
 
 export class PostgresLearningStore implements LearningRepository {
   async saveSpeaking(record: SpeakingRecord): Promise<void> {
-    await this.client.query(`INSERT INTO speaking_sessions (id, part, topic, ended_at, record_json)
-      VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`, [record.id, record.part, record.topic, record.endedAt, JSON.stringify(record)]);
+    await this.client.query(`INSERT INTO speaking_sessions (user_id, id, part, topic, ended_at, record_json)
+      VALUES ($6, $1, $2, $3, $4, $5) ON CONFLICT (user_id, id) DO NOTHING`, [record.id, record.part, record.topic, record.endedAt, JSON.stringify(record), this.userId]);
   }
 
   async speakingHistory(): Promise<SpeakingSummary[]> {
-    const result = await this.client.query('SELECT id, part, topic, ended_at AS "endedAt" FROM speaking_sessions ORDER BY ended_at DESC, id');
+    const result = await this.client.query('SELECT id, part, topic, ended_at AS "endedAt" FROM speaking_sessions WHERE user_id=$1 ORDER BY ended_at DESC, id', [this.userId]);
     return result.rows as SpeakingSummary[];
   }
 
   async speakingRecord(id: string): Promise<SpeakingRecord | undefined> {
-    const row = await this.one("SELECT record_json FROM speaking_sessions WHERE id=$1", [id]);
+    const row = await this.one("SELECT record_json FROM speaking_sessions WHERE user_id=$2 AND id=$1", [id, this.userId]);
     return row ? JSON.parse(String(row.record_json)) : undefined;
   }
 
-  constructor(private readonly client: QueryClient) {}
+  constructor(private readonly client: QueryClient, private readonly userId = "local-learner") {}
 
-  async initialize(): Promise<void> {
+  private async migrateLearningSchema(): Promise<void> {
     const schema = `
       CREATE TABLE IF NOT EXISTS profile (
         id TEXT PRIMARY KEY, target_listening DOUBLE PRECISION NOT NULL, target_reading DOUBLE PRECISION NOT NULL,
@@ -96,9 +97,6 @@ export class PostgresLearningStore implements LearningRepository {
         id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL,
         text TEXT NOT NULL, created_at TEXT NOT NULL, question_id TEXT
       );
-      CREATE TABLE IF NOT EXISTS demo_login_attempts (
-        source_hash TEXT PRIMARY KEY, failed_at TIMESTAMPTZ[] NOT NULL DEFAULT '{}'
-      );
       CREATE INDEX IF NOT EXISTS coach_messages_recent ON coach_messages(conversation_id, created_at);
       CREATE INDEX IF NOT EXISTS plan_by_date ON plan_tasks(date, status);
       CREATE INDEX IF NOT EXISTS attempts_recent ON attempts(submitted_at);
@@ -118,10 +116,40 @@ export class PostgresLearningStore implements LearningRepository {
       "ALTER TABLE plan_proposals ADD COLUMN IF NOT EXISTS plan_date TEXT",
     ]) await this.client.query(statement);
     await this.client.query("UPDATE plan_tasks SET status='expired' WHERE status='pending' AND question_ids_json='[]'");
-    const examDate = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10);
-    await this.client.query(`INSERT INTO profile
-      (id, target_listening, target_reading, exam_date, daily_minutes, updated_at, setup_complete)
-      VALUES ('local-learner', 7, 7, $1, 45, $2, FALSE) ON CONFLICT (id) DO NOTHING`, [examDate, now()]);
+    // Older deployments keep their shared data under the reserved legacy owner.
+    for (const table of ["drafts", "attempts", "speaking_sessions", "causes", "mock_papers", "review_schedule", "plan_tasks", "plan_proposals", "coach_messages"]) {
+      await this.client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT 'local-learner'`);
+    }
+    for (const [table, key] of [["review_schedule", "question_id"], ["plan_proposals", "singleton"], ...["drafts", "attempts", "mock_papers", "plan_tasks", "speaking_sessions"].map((table) => [table, "id"])]) {
+      await this.client.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${table}_pkey, ADD PRIMARY KEY (user_id, ${key})`);
+    }
+    for (const index of [
+      "drafts(user_id, activity_id, updated_at)",
+      "attempts(user_id, submitted_at)",
+      "speaking_sessions(user_id, ended_at)",
+      "causes(user_id, confirmed_at)",
+      "review_schedule(user_id, due_date)",
+      "plan_tasks(user_id, date, status)",
+      "coach_messages(user_id, conversation_id, created_at)",
+    ]) await this.client.query(`CREATE INDEX IF NOT EXISTS ${index.split("(")[0]}_by_user ON ${index}`);
+  }
+
+  async initialize(): Promise<void> {
+    await this.client.query("BEGIN");
+    try {
+      await this.client.query("SELECT pg_advisory_xact_lock(1295337001)");
+      await this.client.query("CREATE TABLE IF NOT EXISTS ielts_schema_version (version INTEGER PRIMARY KEY)");
+      const applied = await this.one("SELECT version FROM ielts_schema_version WHERE version=1");
+      if (!applied) {
+        await this.migrateLearningSchema();
+        await initializeAccounts(async (sql, values) => (await this.client.query(sql, values)).rows as Row[]);
+        await this.client.query("INSERT INTO ielts_schema_version (version) VALUES (1)");
+      }
+      await this.client.query("COMMIT");
+    } catch (error) {
+      await this.client.query("ROLLBACK");
+      throw error;
+    }
   }
 
   private async rows(sql: string, params: unknown[] = []): Promise<Row[]> {
@@ -132,13 +160,18 @@ export class PostgresLearningStore implements LearningRepository {
     return { id: String(row.id), targetListening: Number(row.target_listening), targetReading: Number(row.target_reading), examDate: String(row.exam_date), dailyMinutes: Number(row.daily_minutes), updatedAt: String(row.updated_at), setupComplete: bool(row.setup_complete) };
   }
   async profile(): Promise<LearnerProfile> {
-    const row = await this.one("SELECT * FROM profile WHERE id='local-learner'");
-    if (!row) throw new Error("学习档案尚未初始化。");
-    return this.profileFrom(row);
+    const row = await this.one("SELECT * FROM profile WHERE id=$1", [this.userId]);
+    if (row) return this.profileFrom(row);
+    const examDate = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10);
+    return { id: this.userId, targetListening: 7, targetReading: 7, examDate, dailyMinutes: 45, setupComplete: false, updatedAt: now() };
   }
   async saveProfile(input: Pick<LearnerProfile, "targetListening" | "targetReading" | "examDate" | "dailyMinutes">): Promise<LearnerProfile> {
-    await this.client.query(`UPDATE profile SET target_listening=$1, target_reading=$2, exam_date=$3, daily_minutes=$4, updated_at=$5, setup_complete=TRUE WHERE id='local-learner'`, [input.targetListening, input.targetReading, input.examDate, input.dailyMinutes, now()]);
-    return this.profile();
+    const row = await this.one(`INSERT INTO profile (id, target_listening, target_reading, exam_date, daily_minutes, updated_at, setup_complete)
+      VALUES ($1,$2,$3,$4,$5,$6,TRUE) ON CONFLICT (id) DO UPDATE SET
+      target_listening=EXCLUDED.target_listening, target_reading=EXCLUDED.target_reading, exam_date=EXCLUDED.exam_date,
+      daily_minutes=EXCLUDED.daily_minutes, updated_at=EXCLUDED.updated_at, setup_complete=TRUE RETURNING *`,
+    [this.userId, input.targetListening, input.targetReading, input.examDate, input.dailyMinutes, now()]);
+    return this.profileFrom(row!);
   }
   async importedActivities(): Promise<Activity[]> {
     const activities: Activity[] = [];
@@ -168,11 +201,11 @@ export class PostgresLearningStore implements LearningRepository {
     } catch (error) { await this.client.query("ROLLBACK"); throw error; }
   }
   async saveMockPaper(activity: Activity): Promise<void> {
-    await this.client.query("INSERT INTO mock_papers (id, activity_json, created_at) VALUES ($1, $2, $3)", [activity.id, JSON.stringify(activity), now()]);
+    await this.client.query("INSERT INTO mock_papers (user_id, id, activity_json, created_at) VALUES ($4, $1, $2, $3)", [activity.id, JSON.stringify(activity), now(), this.userId]);
   }
 
   async mockPaper(id: string): Promise<Activity | undefined> {
-    const row = await this.one("SELECT activity_json FROM mock_papers WHERE id=$1", [id]);
+    const row = await this.one("SELECT activity_json FROM mock_papers WHERE user_id=$2 AND id=$1", [id, this.userId]);
     return row ? parse<Activity | undefined>(row.activity_json, undefined) : undefined;
   }
 
@@ -191,16 +224,16 @@ export class PostgresLearningStore implements LearningRepository {
   async startAttempt(activityId: string, mode: ActivityMode, taskId?: string, reviewQuestionIds?: string[], questionIds?: string[], examTiming?: ExamTiming): Promise<AnswerDraft> {
     const timestamp = now(); const id = randomUUID();
     const selectedIds = questionIds ?? reviewQuestionIds ?? [];
-    await this.client.query(`INSERT INTO drafts (id, activity_id, mode, answers_json, hinted_json, started_at, updated_at, status, interruption, task_id, review_question_ids_json, question_ids_json, question_time_seconds_json, exam_timing_json)
-      VALUES ($1, $2, $3, '{}', '[]', $4, $4, 'in_progress', NULL, $5, $6, $7, '{}', $8)`, [id, activityId, mode, timestamp, taskId ?? null, JSON.stringify(reviewQuestionIds ?? []), JSON.stringify(selectedIds), examTiming ? JSON.stringify(examTiming) : null]);
+    await this.client.query(`INSERT INTO drafts (user_id, id, activity_id, mode, answers_json, hinted_json, started_at, updated_at, status, interruption, task_id, review_question_ids_json, question_ids_json, question_time_seconds_json, exam_timing_json)
+      VALUES ($9, $1, $2, $3, '{}', '[]', $4, $4, 'in_progress', NULL, $5, $6, $7, '{}', $8)`, [id, activityId, mode, timestamp, taskId ?? null, JSON.stringify(reviewQuestionIds ?? []), JSON.stringify(selectedIds), examTiming ? JSON.stringify(examTiming) : null, this.userId]);
     return { ...(examTiming ? { examTiming, deadlineAt: examDeadline(timestamp, examTiming) } : {}), attemptId: id, activityId, ...(taskId ? { taskId } : {}), ...(selectedIds.length ? { questionIds: selectedIds } : {}), ...(reviewQuestionIds?.length ? { reviewQuestionIds } : {}), mode, answers: {}, questionTimeSeconds: {}, saveRevision: 0, hintedQuestionIds: [], startedAt: timestamp, updatedAt: timestamp };
   }
   async draft(attemptId: string): Promise<AnswerDraft | undefined> {
-    const row = await this.one("SELECT * FROM drafts WHERE id=$1 AND status='in_progress'", [attemptId]);
+    const row = await this.one("SELECT * FROM drafts WHERE user_id=$2 AND id=$1 AND status='in_progress'", [attemptId, this.userId]);
     return row ? this.toDraft(row) : undefined;
   }
   async draftForActivity(activityId: string): Promise<AnswerDraft | undefined> {
-    const row = await this.one("SELECT * FROM drafts WHERE activity_id=$1 AND status='in_progress' ORDER BY updated_at DESC LIMIT 1", [activityId]);
+    const row = await this.one("SELECT * FROM drafts WHERE user_id=$2 AND activity_id=$1 AND status='in_progress' ORDER BY updated_at DESC LIMIT 1", [activityId, this.userId]);
     return row ? this.toDraft(row) : undefined;
   }
   async saveDraft(attemptId: string, answers: Record<string, string>, questionTimeSeconds: Record<string, number> | undefined, revision: number): Promise<AnswerDraft> {
@@ -213,7 +246,7 @@ export class PostgresLearningStore implements LearningRepository {
           SELECT key, value FROM jsonb_each_text(COALESCE(draft.question_time_seconds_json, '{}')::jsonb)
           UNION ALL SELECT key, value FROM jsonb_each_text($2::jsonb)
         ) AS combined GROUP BY key
-      ) AS merged), client_revision=$3, updated_at=$4 WHERE id=$5 AND status='in_progress' AND draft.client_revision < $3`, [JSON.stringify(answers), JSON.stringify(times), revision, now(), attemptId]);
+      ) AS merged), client_revision=$3, updated_at=$4 WHERE user_id=$6 AND id=$5 AND status='in_progress' AND draft.client_revision < $3`, [JSON.stringify(answers), JSON.stringify(times), revision, now(), attemptId, this.userId]);
     const draft = await this.draft(attemptId);
     if (!draft) throw new StoreError("这份练习已提交或已结束。", 409);
     return draft;
@@ -221,14 +254,14 @@ export class PostgresLearningStore implements LearningRepository {
   async addHint(attemptId: string, questionId: string): Promise<AnswerDraft> {
     const draft = await this.draft(attemptId);
     if (!draft) throw new StoreError("这份练习已提交或已结束。", 409);
-    await this.client.query("UPDATE drafts SET hinted_json=$1, updated_at=$2 WHERE id=$3", [JSON.stringify([...new Set([...draft.hintedQuestionIds, questionId])]), now(), attemptId]);
+    await this.client.query("UPDATE drafts SET hinted_json=$1, updated_at=$2 WHERE user_id=$4 AND id=$3", [JSON.stringify([...new Set([...draft.hintedQuestionIds, questionId])]), now(), attemptId, this.userId]);
     return (await this.draft(attemptId))!;
   }
   async markInterrupted(attemptId: string, reason: string): Promise<void> {
-    await this.client.query("UPDATE drafts SET interruption=$1, updated_at=$2 WHERE id=$3 AND status='in_progress'", [reason.slice(0, 240), now(), attemptId]);
+    await this.client.query("UPDATE drafts SET interruption=$1, updated_at=$2 WHERE user_id=$4 AND id=$3 AND status='in_progress'", [reason.slice(0, 240), now(), attemptId, this.userId]);
   }
   async abandonAttempt(attemptId: string): Promise<void> {
-    const result = await this.client.query("UPDATE drafts SET status='abandoned', updated_at=$1 WHERE id=$2 AND status='in_progress'", [now(), attemptId]);
+    const result = await this.client.query("UPDATE drafts SET status='abandoned', updated_at=$1 WHERE user_id=$3 AND id=$2 AND status='in_progress'", [now(), attemptId, this.userId]);
     if (result.rowCount !== 1) throw new StoreError("这份练习已结束或找不到记录。", 404);
   }
   private dateAfter(days: number): string {
@@ -242,26 +275,26 @@ export class PostgresLearningStore implements LearningRepository {
     const result: AttemptResult = { ...draft, pluginId: activity.pluginId, submittedAt, score: responses.filter((item) => item.correct).length, total: responses.length, responses, sample: activity.sample };
     await this.client.query("BEGIN");
     try {
-      const inserted = await this.client.query(`INSERT INTO attempts (id, activity_id, plugin_id, mode, answers_json, hinted_json, started_at, submitted_at, score, total, responses_json, sample, question_time_seconds_json, exam_timing_json)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (id) DO NOTHING RETURNING id`, [result.attemptId, result.activityId, result.pluginId, result.mode, JSON.stringify(result.answers), JSON.stringify(result.hintedQuestionIds), result.startedAt, submittedAt, result.score, result.total, JSON.stringify(responses), result.sample, JSON.stringify(result.questionTimeSeconds ?? {}), result.examTiming ? JSON.stringify(result.examTiming) : null]);
+      const inserted = await this.client.query(`INSERT INTO attempts (user_id, id, activity_id, plugin_id, mode, answers_json, hinted_json, started_at, submitted_at, score, total, responses_json, sample, question_time_seconds_json, exam_timing_json)
+        VALUES ($15, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (user_id, id) DO NOTHING RETURNING id`, [result.attemptId, result.activityId, result.pluginId, result.mode, JSON.stringify(result.answers), JSON.stringify(result.hintedQuestionIds), result.startedAt, submittedAt, result.score, result.total, JSON.stringify(responses), result.sample, JSON.stringify(result.questionTimeSeconds ?? {}), result.examTiming ? JSON.stringify(result.examTiming) : null, this.userId]);
       if (inserted.rowCount !== 1) {
         await this.client.query("COMMIT");
         return (await this.attempt(draft.attemptId))!;
       }
-      await this.client.query("UPDATE drafts SET status='submitted', updated_at=$1 WHERE id=$2 AND status='in_progress'", [submittedAt, result.attemptId]);
+      await this.client.query("UPDATE drafts SET status='submitted', updated_at=$1 WHERE user_id=$3 AND id=$2 AND status='in_progress'", [submittedAt, result.attemptId, this.userId]);
       for (const response of responses) {
-        const prior = await this.one("SELECT streak FROM review_schedule WHERE question_id=$1", [response.questionId]);
+        const prior = await this.one("SELECT streak FROM review_schedule WHERE user_id=$2 AND question_id=$1", [response.questionId, this.userId]);
         if (!prior && result.mode !== "review" && response.correct && response.independent) continue;
         const independentCorrect = response.correct && response.independent;
         const streak = independentCorrect ? Number(prior?.streak ?? 0) + 1 : 0;
         const interval = independentCorrect ? [1, 3, 7, 14][Math.min(Math.max(streak - 1, 0), 3)]! : 1;
         const lastResult = independentCorrect ? "correct" : response.correct ? "hinted" : "incorrect";
-        await this.client.query(`INSERT INTO review_schedule (question_id, activity_id, plugin_id, streak, interval_days, due_date, last_result, last_seen)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (question_id) DO UPDATE SET
+        await this.client.query(`INSERT INTO review_schedule (user_id, question_id, activity_id, plugin_id, streak, interval_days, due_date, last_result, last_seen)
+          VALUES ($9, $1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (user_id, question_id) DO UPDATE SET
           streak=CASE WHEN EXCLUDED.last_result='correct' THEN review_schedule.streak+1 ELSE 0 END,
-          interval_days=EXCLUDED.interval_days, due_date=EXCLUDED.due_date, last_result=EXCLUDED.last_result, last_seen=EXCLUDED.last_seen, activity_id=EXCLUDED.activity_id`, [response.questionId, response.materialId, result.pluginId, streak, interval, this.dateAfter(interval), lastResult, submittedAt]);
+          interval_days=EXCLUDED.interval_days, due_date=EXCLUDED.due_date, last_result=EXCLUDED.last_result, last_seen=EXCLUDED.last_seen, activity_id=EXCLUDED.activity_id`, [response.questionId, response.materialId, result.pluginId, streak, interval, this.dateAfter(interval), lastResult, submittedAt, this.userId]);
       }
-      if (draft.taskId) await this.client.query("UPDATE plan_tasks SET status='done' WHERE id=$1", [draft.taskId]);
+      if (draft.taskId) await this.client.query("UPDATE plan_tasks SET status='done' WHERE user_id=$2 AND id=$1", [draft.taskId, this.userId]);
       await this.client.query("COMMIT");
     } catch (error) {
       await this.client.query("ROLLBACK");
@@ -272,14 +305,14 @@ export class PostgresLearningStore implements LearningRepository {
     return result;
   }
   async attempt(attemptId: string): Promise<AttemptResult | undefined> {
-    const row = await this.one("SELECT * FROM attempts WHERE id=$1", [attemptId]);
+    const row = await this.one("SELECT * FROM attempts WHERE user_id=$2 AND id=$1", [attemptId, this.userId]);
     return row ? this.toAttempt(row) : undefined;
   }
   async saveCause(attemptId: string, questionId: string, skillTag: string, cause: string): Promise<void> {
-    await this.client.query("INSERT INTO causes (id, attempt_id, question_id, skill_tag, cause, confirmed_at) VALUES ($1,$2,$3,$4,$5,$6)", [randomUUID(), attemptId, questionId, skillTag, cause.slice(0, 120), now()]);
+    await this.client.query("INSERT INTO causes (user_id, id, attempt_id, question_id, skill_tag, cause, confirmed_at) VALUES ($7, $1,$2,$3,$4,$5,$6)", [randomUUID(), attemptId, questionId, skillTag, cause.slice(0, 120), now(), this.userId]);
   }
   async evidence(): Promise<SkillEvidence[]> {
-    const rows = await this.rows("SELECT plugin_id, mode, responses_json, question_time_seconds_json, submitted_at FROM attempts ORDER BY submitted_at ASC");
+    const rows = await this.rows("SELECT plugin_id, mode, responses_json, question_time_seconds_json, submitted_at FROM attempts WHERE user_id=$1 ORDER BY submitted_at ASC", [this.userId]);
     type FirstSeen = { pluginId: Section; first: QuestionResult; firstAt: string; firstIndependent?: QuestionResult; firstIndependentAt?: string };
     const questions = new Map<string, FirstSeen>();
     const timingSamples: Array<{ questionId: string; seconds: number; submittedAt: string }> = [];
@@ -326,7 +359,7 @@ export class PostgresLearningStore implements LearningRepository {
         groups.set(id, current);
       }
     }
-    const causes = await this.rows("SELECT question_id, skill_tag, cause, confirmed_at FROM causes ORDER BY confirmed_at DESC");
+    const causes = await this.rows("SELECT question_id, skill_tag, cause, confirmed_at FROM causes WHERE user_id=$1 ORDER BY confirmed_at DESC", [this.userId]);
     const causeMap = new Map<string, string>(); const causeSeen = new Set<string>();
     for (const row of causes) {
       const pluginId = questions.get(String(row.question_id))?.pluginId;
@@ -367,14 +400,14 @@ export class PostgresLearningStore implements LearningRepository {
   }
 
   async attemptedQuestionIds(): Promise<string[]> {
-    const rows = await this.rows("SELECT mode, responses_json FROM attempts ORDER BY submitted_at ASC");
+    const rows = await this.rows("SELECT mode, responses_json FROM attempts WHERE user_id=$1 ORDER BY submitted_at ASC", [this.userId]);
     const ids = new Set<string>();
     for (const row of rows) if (row.mode !== "review") for (const response of parse(row.responses_json, [] as QuestionResult[])) if (response.independent) ids.add(response.questionId);
     return [...ids];
   }
 
   async questionTimingSamples(): Promise<Array<{ questionId: string; seconds: number; submittedAt: string }>> {
-    const rows = await this.rows("SELECT mode, responses_json, question_time_seconds_json, submitted_at FROM attempts ORDER BY submitted_at ASC");
+    const rows = await this.rows("SELECT mode, responses_json, question_time_seconds_json, submitted_at FROM attempts WHERE user_id=$1 ORDER BY submitted_at ASC", [this.userId]);
     const seen = new Set<string>(); const samples: Array<{ questionId: string; seconds: number; submittedAt: string }> = [];
     for (const row of rows) {
       if (row.mode === "review") continue;
@@ -388,24 +421,24 @@ export class PostgresLearningStore implements LearningRepository {
     return samples;
   }
   async attempts(limit = 40): Promise<AttemptResult[]> {
-    return (await this.rows("SELECT * FROM attempts ORDER BY submitted_at DESC LIMIT $1", [limit])).map((row) => this.toAttempt(row));
+    return (await this.rows("SELECT * FROM attempts WHERE user_id=$2 ORDER BY submitted_at DESC LIMIT $1", [limit, this.userId])).map((row) => this.toAttempt(row));
   }
   today(): string { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
   async reviews(today = this.today()): Promise<Array<{ questionId: string; activityId: string; pluginId: Section; dueDate: string; lastResult: string; streak: number }>> {
-    return (await this.rows("SELECT question_id AS \"questionId\", activity_id AS \"activityId\", plugin_id AS \"pluginId\", due_date AS \"dueDate\", last_result AS \"lastResult\", streak FROM review_schedule WHERE due_date <= $1 ORDER BY due_date", [today])).map((row) => ({ questionId: String(row.questionId), activityId: String(row.activityId), pluginId: row.pluginId as Section, dueDate: String(row.dueDate), lastResult: String(row.lastResult), streak: Number(row.streak) }));
+    return (await this.rows("SELECT question_id AS \"questionId\", activity_id AS \"activityId\", plugin_id AS \"pluginId\", due_date AS \"dueDate\", last_result AS \"lastResult\", streak FROM review_schedule WHERE user_id=$2 AND due_date <= $1 ORDER BY due_date", [today, this.userId])).map((row) => ({ questionId: String(row.questionId), activityId: String(row.activityId), pluginId: row.pluginId as Section, dueDate: String(row.dueDate), lastResult: String(row.lastResult), streak: Number(row.streak) }));
   }
-  async dueReviewCount(): Promise<number> { const row = await this.one("SELECT COUNT(*) AS count FROM review_schedule WHERE due_date <= $1", [this.today()]); return Number(row?.count ?? 0); }
+  async dueReviewCount(): Promise<number> { const row = await this.one("SELECT COUNT(*) AS count FROM review_schedule WHERE user_id=$2 AND due_date <= $1", [this.today(), this.userId]); return Number(row?.count ?? 0); }
   async savePlan(tasks: PlanTask[], revision: string): Promise<void> {
     await this.client.query("BEGIN");
     try {
       for (const item of tasks) {
-        const exists = await this.one("SELECT id FROM plan_tasks WHERE id=$1 AND locked=TRUE", [item.id]); if (exists) continue;
-        await this.client.query(`INSERT INTO plan_tasks (id,date,activity_id,plugin_id,kind,title,description,minutes,reason,review_question_ids_json,question_ids_json,focus_skill_tag,question_kind,locked,status,revision)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,FALSE,'pending',$14) ON CONFLICT (id) DO UPDATE SET
+        const exists = await this.one("SELECT id FROM plan_tasks WHERE user_id=$2 AND id=$1 AND locked=TRUE", [item.id, this.userId]); if (exists) continue;
+        await this.client.query(`INSERT INTO plan_tasks (user_id, id,date,activity_id,plugin_id,kind,title,description,minutes,reason,review_question_ids_json,question_ids_json,focus_skill_tag,question_kind,locked,status,revision)
+          VALUES ($15, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,FALSE,'pending',$14) ON CONFLICT (user_id, id) DO UPDATE SET
           date=EXCLUDED.date, activity_id=EXCLUDED.activity_id, plugin_id=EXCLUDED.plugin_id, kind=EXCLUDED.kind, title=EXCLUDED.title,
           description=EXCLUDED.description, minutes=EXCLUDED.minutes, reason=EXCLUDED.reason, review_question_ids_json=EXCLUDED.review_question_ids_json,
           question_ids_json=EXCLUDED.question_ids_json, focus_skill_tag=EXCLUDED.focus_skill_tag, question_kind=EXCLUDED.question_kind, revision=EXCLUDED.revision
-          WHERE plan_tasks.locked=FALSE`, [item.id,item.date,item.activityId,item.pluginId,item.kind,item.title,item.description,item.minutes,item.reason,JSON.stringify(item.reviewQuestionIds ?? []),JSON.stringify(item.questionIds ?? []),item.focusSkillTag ?? null,item.questionKind ?? null,revision]);
+          WHERE plan_tasks.locked=FALSE`, [item.id,item.date,item.activityId,item.pluginId,item.kind,item.title,item.description,item.minutes,item.reason,JSON.stringify(item.reviewQuestionIds ?? []),JSON.stringify(item.questionIds ?? []),item.focusSkillTag ?? null,item.questionKind ?? null,revision, this.userId]);
       }
       await this.client.query("COMMIT");
     } catch (error) { await this.client.query("ROLLBACK"); throw error; }
@@ -413,33 +446,33 @@ export class PostgresLearningStore implements LearningRepository {
   private async planRows(today: string): Promise<PlanTask[]> {
     const rows = await this.rows(`SELECT id,date,activity_id AS \"activityId\",plugin_id AS \"pluginId\",kind,title,description,minutes,reason,
       review_question_ids_json AS \"reviewQuestionIdsJson\",question_ids_json AS \"questionIdsJson\",focus_skill_tag AS \"focusSkillTag\",question_kind AS \"questionKind\",locked,status
-      FROM plan_tasks WHERE date = $1 ORDER BY kind DESC,id`, [today]);
+      FROM plan_tasks WHERE user_id=$2 AND date = $1 ORDER BY kind DESC,id`, [today, this.userId]);
     return rows.map((row) => ({ id:String(row.id),date:String(row.date),activityId:String(row.activityId),pluginId:row.pluginId as Section,kind:row.kind as PlanTask["kind"],title:String(row.title),description:String(row.description),minutes:Number(row.minutes),reason:String(row.reason),reviewQuestionIds:parse(row.reviewQuestionIdsJson,[] as string[]),questionIds:parse(row.questionIdsJson,[] as string[]),focusSkillTag:row.focusSkillTag ? String(row.focusSkillTag) : undefined,questionKind:row.questionKind as PlanTask["questionKind"],locked:bool(row.locked),status:row.status as PlanTask["status"] }));
   }
   async plan(today = this.today()): Promise<PlanTask[]> { return this.planRows(today); }
   async overduePlanTasks(today = this.today()): Promise<PlanTask[]> {
     const rows = await this.rows(`SELECT id,date,activity_id AS \"activityId\",plugin_id AS \"pluginId\",kind,title,description,minutes,reason,
       review_question_ids_json AS \"reviewQuestionIdsJson\",question_ids_json AS \"questionIdsJson\",focus_skill_tag AS \"focusSkillTag\",question_kind AS \"questionKind\",locked,status
-      FROM plan_tasks WHERE date < $1 AND status='pending' ORDER BY date,id LIMIT 80`, [today]);
+      FROM plan_tasks WHERE user_id=$2 AND date < $1 AND status='pending' ORDER BY date,id LIMIT 80`, [today, this.userId]);
     return rows.map((row) => ({ id:String(row.id),date:String(row.date),activityId:String(row.activityId),pluginId:row.pluginId as Section,kind:row.kind as PlanTask["kind"],title:String(row.title),description:String(row.description),minutes:Number(row.minutes),reason:String(row.reason),reviewQuestionIds:parse(row.reviewQuestionIdsJson,[] as string[]),questionIds:parse(row.questionIdsJson,[] as string[]),focusSkillTag:row.focusSkillTag ? String(row.focusSkillTag) : undefined,questionKind:row.questionKind as PlanTask["questionKind"],locked:bool(row.locked),status:row.status as PlanTask["status"] }));
   }
   async planProposal(): Promise<PlanProposal & { inputRevision?: string }> {
-    const row = await this.one(`SELECT id,status,input_revision AS \"inputRevision\",tasks_json AS \"tasksJson\",changes_json AS \"changesJson\",error,updated_at AS \"updatedAt\",plan_date AS \"planDate\" FROM plan_proposals WHERE singleton=1`);
+    const row = await this.one(`SELECT id,status,input_revision AS \"inputRevision\",tasks_json AS \"tasksJson\",changes_json AS \"changesJson\",error,updated_at AS \"updatedAt\",plan_date AS \"planDate\" FROM plan_proposals WHERE user_id=$1 AND singleton=1`, [this.userId]);
     if (!row) return { status: "idle", changes: [] };
     return { id:String(row.id),status:row.status as PlanProposal["status"],...(row.planDate ? { planDate:String(row.planDate) } : {}),inputRevision:String(row.inputRevision),...(row.status === "ready" ? { tasks:parse(row.tasksJson,[] as PlanTask[]) } : {}),changes:parse(row.changesJson,[] as PlanProposalChange[]),...(row.error?{error:String(row.error)}:{}),updatedAt:String(row.updatedAt) };
   }
   async beginPlanProposal(inputRevision: string, planDate = this.today()): Promise<string> {
     const id = randomUUID();
-    await this.client.query(`INSERT INTO plan_proposals (singleton,id,status,input_revision,tasks_json,changes_json,error,updated_at,plan_date)
-      VALUES (1,$1,'generating',$2,'[]','[]',NULL,$3,$4) ON CONFLICT (singleton) DO UPDATE SET id=EXCLUDED.id,status='generating',input_revision=EXCLUDED.input_revision,tasks_json='[]',changes_json='[]',error=NULL,updated_at=EXCLUDED.updated_at,plan_date=EXCLUDED.plan_date`, [id,inputRevision,now(),planDate]);
+    await this.client.query(`INSERT INTO plan_proposals (user_id, singleton,id,status,input_revision,tasks_json,changes_json,error,updated_at,plan_date)
+      VALUES ($5, 1,$1,'generating',$2,'[]','[]',NULL,$3,$4) ON CONFLICT (user_id, singleton) DO UPDATE SET id=EXCLUDED.id,status='generating',input_revision=EXCLUDED.input_revision,tasks_json='[]',changes_json='[]',error=NULL,updated_at=EXCLUDED.updated_at,plan_date=EXCLUDED.plan_date`, [id,inputRevision,now(),planDate, this.userId]);
     return id;
   }
   async beginPlanProposalIfIdle(inputRevision: string, planDate: string, options: { retryFailed?: boolean; recoverStaleBefore?: string } = {}): Promise<string | undefined> {
     await this.client.query("BEGIN");
     try {
-      await this.client.query(`INSERT INTO plan_proposals (singleton,id,status,input_revision,tasks_json,changes_json,error,updated_at,plan_date)
-        VALUES (1,$1,'idle','','[]','[]',NULL,$2,NULL) ON CONFLICT (singleton) DO NOTHING`, [randomUUID(), now()]);
-      const row = await this.one(`SELECT status, plan_date AS "planDate", updated_at AS "updatedAt" FROM plan_proposals WHERE singleton=1 FOR UPDATE`);
+      await this.client.query(`INSERT INTO plan_proposals (user_id, singleton,id,status,input_revision,tasks_json,changes_json,error,updated_at,plan_date)
+        VALUES ($3, 1,$1,'idle','','[]','[]',NULL,$2,NULL) ON CONFLICT (user_id, singleton) DO NOTHING`, [randomUUID(), now(), this.userId]);
+      const row = await this.one(`SELECT status, plan_date AS "planDate", updated_at AS "updatedAt" FROM plan_proposals WHERE user_id=$1 AND singleton=1 FOR UPDATE`, [this.userId]);
       if (row && String(row.planDate ?? "") === planDate) {
         const status = String(row.status) as PlanProposal["status"];
         const recover = status === "generating" && options.recoverStaleBefore !== undefined && String(row.updatedAt) < options.recoverStaleBefore;
@@ -447,36 +480,36 @@ export class PostgresLearningStore implements LearningRepository {
         if (!recover && !retry) { await this.client.query("ROLLBACK"); return undefined; }
       }
       const id = randomUUID();
-      await this.client.query(`INSERT INTO plan_proposals (singleton,id,status,input_revision,tasks_json,changes_json,error,updated_at,plan_date)
-        VALUES (1,$1,'generating',$2,'[]','[]',NULL,$3,$4) ON CONFLICT (singleton) DO UPDATE SET id=EXCLUDED.id,status='generating',input_revision=EXCLUDED.input_revision,tasks_json='[]',changes_json='[]',error=NULL,updated_at=EXCLUDED.updated_at,plan_date=EXCLUDED.plan_date`, [id,inputRevision,now(),planDate]);
+      await this.client.query(`INSERT INTO plan_proposals (user_id, singleton,id,status,input_revision,tasks_json,changes_json,error,updated_at,plan_date)
+        VALUES ($5, 1,$1,'generating',$2,'[]','[]',NULL,$3,$4) ON CONFLICT (user_id, singleton) DO UPDATE SET id=EXCLUDED.id,status='generating',input_revision=EXCLUDED.input_revision,tasks_json='[]',changes_json='[]',error=NULL,updated_at=EXCLUDED.updated_at,plan_date=EXCLUDED.plan_date`, [id,inputRevision,now(),planDate, this.userId]);
       await this.client.query("COMMIT");
       return id;
     } catch (error) { await this.client.query("ROLLBACK"); throw error; }
   }
   async completePlanProposal(id: string, tasks: PlanTask[], changes: PlanProposalChange[]): Promise<boolean> {
-    const result = await this.client.query(`UPDATE plan_proposals SET status='ready',tasks_json=$1,changes_json=$2,error=NULL,updated_at=$3 WHERE singleton=1 AND id=$4 AND status='generating'`, [JSON.stringify(tasks),JSON.stringify(changes),now(),id]);
+    const result = await this.client.query(`UPDATE plan_proposals SET status='ready',tasks_json=$1,changes_json=$2,error=NULL,updated_at=$3 WHERE user_id=$5 AND singleton=1 AND id=$4 AND status='generating'`, [JSON.stringify(tasks),JSON.stringify(changes),now(),id, this.userId]);
     return result.rowCount === 1;
   }
   async failPlanProposal(id: string, message: string): Promise<boolean> {
-    const result = await this.client.query(`UPDATE plan_proposals SET status='failed',error=$1,updated_at=$2 WHERE singleton=1 AND id=$3 AND status='generating'`, [message.slice(0,240),now(),id]); return result.rowCount === 1;
+    const result = await this.client.query(`UPDATE plan_proposals SET status='failed',error=$1,updated_at=$2 WHERE user_id=$4 AND singleton=1 AND id=$3 AND status='generating'`, [message.slice(0,240),now(),id, this.userId]); return result.rowCount === 1;
   }
   async failReadyPlanProposal(id: string, message: string): Promise<boolean> {
-    const result = await this.client.query(`UPDATE plan_proposals SET status='failed',error=$1,updated_at=$2 WHERE singleton=1 AND id=$3 AND status='ready'`, [message.slice(0,240),now(),id]); return result.rowCount === 1;
+    const result = await this.client.query(`UPDATE plan_proposals SET status='failed',error=$1,updated_at=$2 WHERE user_id=$4 AND singleton=1 AND id=$3 AND status='ready'`, [message.slice(0,240),now(),id, this.userId]); return result.rowCount === 1;
   }
   async dismissPlanProposal(id: string): Promise<boolean> {
-    const result = await this.client.query(`UPDATE plan_proposals SET status='dismissed',updated_at=$1 WHERE singleton=1 AND id=$2 AND status='ready'`, [now(),id]); return result.rowCount === 1;
+    const result = await this.client.query(`UPDATE plan_proposals SET status='dismissed',updated_at=$1 WHERE user_id=$3 AND singleton=1 AND id=$2 AND status='ready'`, [now(),id, this.userId]); return result.rowCount === 1;
   }
   async applyPlanProposal(id: string): Promise<boolean> {
     await this.client.query("BEGIN");
     try {
-      const proposal = await this.one("SELECT tasks_json,plan_date AS \"planDate\" FROM plan_proposals WHERE singleton=1 AND id=$1 AND status='ready' FOR UPDATE", [id]);
+      const proposal = await this.one("SELECT tasks_json,plan_date AS \"planDate\" FROM plan_proposals WHERE user_id=$2 AND singleton=1 AND id=$1 AND status='ready' FOR UPDATE", [id, this.userId]);
       if (!proposal) { await this.client.query("ROLLBACK"); return false; }
       const tasks = parse(proposal.tasks_json, [] as PlanTask[]); const revision = now(); const planDate = String(proposal.planDate ?? this.today());
       if (planDate !== this.today()) throw new StoreError("这份方案不属于今天，请重新加载查看今日计划。");
       // Hold the profile and today's task rows through validation and replacement.
-      const profile = await this.one("SELECT daily_minutes FROM profile WHERE id='local-learner' FOR UPDATE");
+      const profile = await this.one("SELECT daily_minutes FROM profile WHERE id=$1 FOR UPDATE", [this.userId]);
       if (!profile) throw new StoreError("学习档案尚未初始化。");
-      await this.client.query("SELECT id FROM plan_tasks WHERE date=$1 FOR UPDATE", [planDate]);
+      await this.client.query("SELECT id FROM plan_tasks WHERE user_id=$2 AND date=$1 FOR UPDATE", [planDate, this.userId]);
       const fixed = (await this.plan(planDate)).filter((task) => task.locked || task.status === "done");
       const error = planReplacementError(tasks, fixed, Number(profile.daily_minutes), planDate);
       if (error) {
@@ -484,30 +517,30 @@ export class PostgresLearningStore implements LearningRepository {
         await this.client.query("COMMIT");
         return false;
       }
-      await this.client.query("UPDATE plan_tasks SET status='expired' WHERE date < $1 AND status='pending'", [planDate]);
-      await this.client.query("DELETE FROM plan_tasks WHERE date = $1 AND locked=FALSE AND status='pending'", [planDate]);
-      for (const task of tasks) await this.client.query(`INSERT INTO plan_tasks (id,date,activity_id,plugin_id,kind,title,description,minutes,reason,review_question_ids_json,question_ids_json,focus_skill_tag,question_kind,locked,status,revision)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,FALSE,'pending',$14)`, [task.id,task.date,task.activityId,task.pluginId,task.kind,task.title,task.description,task.minutes,task.reason,JSON.stringify(task.reviewQuestionIds ?? []),JSON.stringify(task.questionIds ?? []),task.focusSkillTag ?? null,task.questionKind ?? null,revision]);
-      const update = await this.client.query("UPDATE plan_proposals SET status='confirmed',updated_at=$1 WHERE singleton=1 AND id=$2 AND status='ready'", [revision,id]);
+      await this.client.query("UPDATE plan_tasks SET status='expired' WHERE user_id=$2 AND date < $1 AND status='pending'", [planDate, this.userId]);
+      await this.client.query("DELETE FROM plan_tasks WHERE user_id=$2 AND date = $1 AND locked=FALSE AND status='pending'", [planDate, this.userId]);
+      for (const task of tasks) await this.client.query(`INSERT INTO plan_tasks (user_id, id,date,activity_id,plugin_id,kind,title,description,minutes,reason,review_question_ids_json,question_ids_json,focus_skill_tag,question_kind,locked,status,revision)
+        VALUES ($15, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,FALSE,'pending',$14)`, [task.id,task.date,task.activityId,task.pluginId,task.kind,task.title,task.description,task.minutes,task.reason,JSON.stringify(task.reviewQuestionIds ?? []),JSON.stringify(task.questionIds ?? []),task.focusSkillTag ?? null,task.questionKind ?? null,revision, this.userId]);
+      const update = await this.client.query("UPDATE plan_proposals SET status='confirmed',updated_at=$1 WHERE user_id=$3 AND singleton=1 AND id=$2 AND status='ready'", [revision,id, this.userId]);
       if (update.rowCount !== 1) { await this.client.query("ROLLBACK"); return false; }
       await this.client.query("COMMIT"); return true;
     } catch (error) { await this.client.query("ROLLBACK"); throw error; }
   }
   async setPlanTask(id: string, changes: { locked?: boolean; status?: "pending" | "done" }): Promise<PlanTask | undefined> {
-    if (changes.locked !== undefined) await this.client.query("UPDATE plan_tasks SET locked=$1 WHERE id=$2", [changes.locked,id]);
-    if (changes.status !== undefined) await this.client.query("UPDATE plan_tasks SET status=$1 WHERE id=$2", [changes.status,id]);
+    if (changes.locked !== undefined) await this.client.query("UPDATE plan_tasks SET locked=$1 WHERE user_id=$3 AND id=$2", [changes.locked,id, this.userId]);
+    if (changes.status !== undefined) await this.client.query("UPDATE plan_tasks SET status=$1 WHERE user_id=$3 AND id=$2", [changes.status,id, this.userId]);
     const row = await this.one(`SELECT id,date,activity_id AS "activityId",plugin_id AS "pluginId",kind,title,description,minutes,reason,
       review_question_ids_json AS "reviewQuestionIdsJson",question_ids_json AS "questionIdsJson",focus_skill_tag AS "focusSkillTag",question_kind AS "questionKind",locked,status
-      FROM plan_tasks WHERE id=$1 LIMIT 1`, [id]);
+      FROM plan_tasks WHERE user_id=$2 AND id=$1 LIMIT 1`, [id, this.userId]);
     if (!row) return undefined;
     return { id:String(row.id),date:String(row.date),activityId:String(row.activityId),pluginId:row.pluginId as Section,kind:row.kind as PlanTask["kind"],title:String(row.title),description:String(row.description),minutes:Number(row.minutes),reason:String(row.reason),reviewQuestionIds:parse(row.reviewQuestionIdsJson,[] as string[]),questionIds:parse(row.questionIdsJson,[] as string[]),focusSkillTag:row.focusSkillTag ? String(row.focusSkillTag) : undefined,questionKind:row.questionKind as PlanTask["questionKind"],locked:bool(row.locked),status:row.status as PlanTask["status"] };
   }
   async addCoachMessage(conversationId: string, role: CoachMessage["role"], text: string, questionId?: string): Promise<CoachMessage> {
     const message: CoachMessage = { id:randomUUID(),conversationId,role,text:text.slice(0,8000),createdAt:now() };
-    await this.client.query("INSERT INTO coach_messages (id,conversation_id,role,text,created_at,question_id) VALUES ($1,$2,$3,$4,$5,$6)", [message.id,conversationId,role,message.text,message.createdAt,questionId ?? null]); return message;
+    await this.client.query("INSERT INTO coach_messages (user_id, id,conversation_id,role,text,created_at,question_id) VALUES ($7, $1,$2,$3,$4,$5,$6)", [message.id,conversationId,role,message.text,message.createdAt,questionId ?? null, this.userId]); return message;
   }
   async coachHistory(conversationId: string): Promise<CoachMessage[]> {
-    return (await this.rows(`SELECT id,conversation_id AS \"conversationId\",role,text,created_at AS \"createdAt\" FROM coach_messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 20`,[conversationId])).reverse().map((row) => ({id:String(row.id),conversationId:String(row.conversationId),role:row.role as CoachMessage["role"],text:String(row.text),createdAt:String(row.createdAt)}));
+    return (await this.rows(`SELECT id,conversation_id AS \"conversationId\",role,text,created_at AS \"createdAt\" FROM coach_messages WHERE user_id=$2 AND conversation_id=$1 ORDER BY created_at DESC LIMIT 20`,[conversationId, this.userId])).reverse().map((row) => ({id:String(row.id),conversationId:String(row.conversationId),role:row.role as CoachMessage["role"],text:String(row.text),createdAt:String(row.createdAt)}));
   }
   async close(): Promise<void> { /* The request-scoped Neon client is closed by its Vercel handler. */ }
 }

@@ -1,24 +1,51 @@
 import { useState, type FormEvent } from "react";
 
-export function LoginView({ onLogin }: { onLogin: (password: string) => Promise<void> }) {
+type Mode = "login" | "register";
+
+export function LoginView({ initialError, onSubmit }: {
+  initialError: string;
+  onSubmit: (mode: Mode, username: string, password: string) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<Mode>("login");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
+  const registering = mode === "register";
+
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
-    try { await onLogin(password); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "登录没有成功，请重试。"); }
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try { await onSubmit(mode, username, password); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "暂时无法登录，请重试。"); }
     finally { setBusy(false); }
   }
+
   return <main className="login-page"><section className="login-card">
     <div className="login-mark" aria-hidden="true">IELTS</div>
-    <h1>欢迎回到暖学</h1>
-    <p className="login-copy">输入演示密码，继续听力、阅读与口语练习。</p>
+    <h1>{registering ? "创建暖学账号" : "欢迎回到暖学"}</h1>
+    <p className="login-copy">{registering ? "注册后即可开启你的个人学习空间。" : "登录后继续你的雅思练习。"}</p>
     <form onSubmit={(event) => void submit(event)}>
-      <label className="field"><span>演示密码</span><input autoComplete="current-password" className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoFocus /></label>
+      <label className="field"><span>用户名</span><input autoComplete="username" autoCapitalize="none" spellCheck={false}
+        className="input" value={username} onChange={(event) => setUsername(event.target.value)} required minLength={3} maxLength={32} autoFocus
+        aria-describedby={registering ? "username-requirements" : undefined} /></label>
+      {registering && <p className="login-hint" id="username-requirements">3–32 位英文字母、数字、点、下划线或连字符，以字母或数字开头。</p>}
+      <label className="field"><span>密码</span><input autoComplete={registering ? "new-password" : "current-password"}
+        className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)}
+        minLength={registering ? 12 : undefined} maxLength={256} required aria-describedby={registering ? "password-requirements" : undefined} /></label>
+      {registering && <p className="login-hint" id="password-requirements">至少 12 个字符。</p>}
       {error && <p className="login-error" role="alert">{error}</p>}
-      <button className="button button-primary login-submit" disabled={busy}>{busy ? "正在验证…" : "进入学习空间"}</button>
+      <button className="button button-primary login-submit" disabled={busy}>{busy ? "正在处理…" : registering ? "注册并登录" : "登录"}</button>
     </form>
-    <p className="login-footnote">本 Demo 使用一个共享学习档案，所有登录者看到同一份进度。</p>
+    <div className="login-footnote">
+      {registering ? "已有账号？" : "第一次使用暖学？"}
+      <button className="button button-soft button-small" type="button" disabled={busy} onClick={() => {
+        setMode(registering ? "login" : "register");
+        setError("");
+        setPassword("");
+      }}>{registering ? "返回登录" : "注册账号"}</button>
+    </div>
   </section></main>;
 }

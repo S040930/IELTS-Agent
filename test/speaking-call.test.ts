@@ -35,7 +35,8 @@ test("manual Part 2 waits for initialization and learner submission, then review
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
     async getUserMedia() { return { getTracks: () => [track], getAudioTracks: () => [track] }; },
   } });
-  t.mock.method(api, "speakingOffer", async () => "answer");
+  t.mock.method(api, "speakingOffer", async () => ({ answer: "answer", callId: "test-call" }));
+  const report = t.mock.method(api, "reportSpeakingUsage", async () => {});
   let phase: CallPhase = "connecting";
   let lines: SpeakingLine[] = [];
   let result: unknown;
@@ -74,7 +75,9 @@ test("manual Part 2 waits for initialization and learner submission, then review
       fluency: rating, vocabulary: rating, grammar: rating, pronunciation: rating,
     } };
     remote.emit("response.text.done", { response_id: "review", text: JSON.stringify(feedback) });
-    remote.emit("response.done", { response: { id: "review", status: "completed" } });
+    const usage = { input_tokens: 42, output_tokens: 17 };
+    remote.emit("response.done", { response: { id: "review", status: "completed", usage } });
+    assert.deepEqual(report.mock.calls.map((call) => call.arguments), [["test-call", "review", usage]]);
     assert.deepEqual(result, { final: lines, feedback, reason: "" });
     assert.ok(closed);
     assert.equal(remote.readyState, "closed");

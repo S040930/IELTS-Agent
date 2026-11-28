@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { HttpError } from "../http-error.js";
 
-const model = "qwen3.8-omni-flash-realtime";
+export const speakingModel = "qwen3.8-omni-flash-realtime";
 
 export function speakingConfigurationError(): string | null {
   if (!process.env.DASHSCOPE_API_KEY?.trim()) return "实时口语尚未配置 DASHSCOPE_API_KEY。";
@@ -26,7 +26,7 @@ export async function exchangeSpeakingOffer(req: IncomingMessage): Promise<strin
   const offer = Buffer.concat(chunks).toString("utf8");
   if (!/^v=0\r?\n/.test(offer) || !/^m=audio /m.test(offer)) throw new HttpError("音频会话描述无效。");
   const url = new URL("/api/v1/webrtc/realtime", "https://" + process.env.IELTS_REALTIME_HOST);
-  url.searchParams.set("model", model);
+  url.searchParams.set("model", speakingModel);
   try {
     const response = await fetch(url, {
       method: "POST", headers: { Authorization: "Bearer " + process.env.DASHSCOPE_API_KEY, "Content-Type": "application/sdp" },

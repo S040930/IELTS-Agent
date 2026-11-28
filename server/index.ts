@@ -1,5 +1,10 @@
+import { authenticate } from "./auth.js";
+import type { Account } from "../src/shared/accounts.js";
+import type { AccountsStore } from "./accounts-store.js";
+import { voiceUsage } from "./services/model-usage.js";
+import { readJson, sendJson } from "./http-json.js";
 import { parseSpeakingRecord } from "../src/shared/speaking.js";
-import { exchangeSpeakingOffer, speakingConfigurationError } from "./services/speaking.js";
+import { exchangeSpeakingOffer, speakingConfigurationError, speakingModel } from "./services/speaking.js";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { HttpError, errorResponse } from "./http-error.js";
@@ -30,6 +35,9 @@ export interface ServerOptions {
   registry?: PluginRegistry;
   deferStartupPlanning?: boolean;
   cloudCatalog?: boolean;
+  localAccounts?: AccountsStore;
+  user?: { account: Account; accounts: AccountsStore };
+  releaseRegistry?: boolean;
 }
 
 const contentTypes: Record<string, string> = {
@@ -39,11 +47,6 @@ const contentTypes: Record<string, string> = {
   ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".webm": "audio/webm", ".woff2": "font/woff2"
 };
 
-function sendJson(res: ServerResponse, status: number, payload: unknown): void {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-server-time": String(Date.now()) });
-  res.end(JSON.stringify(payload));
-}
-
 async function pipeResponse(stream: NodeJS.ReadableStream, res: ServerResponse, label: string): Promise<void> {
   try {
     await pipeline(stream, res);
@@ -52,22 +55,6 @@ async function pipeResponse(stream: NodeJS.ReadableStream, res: ServerResponse, 
     console.error(`[stream:${label}] ${error instanceof Error ? error.message : String(error)}`);
     res.destroy();
   }
-}
-
-async function readJson(req: IncomingMessage, maxBytes = 1_500_000): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const data of req) {
-    const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data);
-    size += chunk.byteLength;
-    if (size > maxBytes) throw new HttpError("提交的内容过大，请缩小文件后重试。", 413);
-    chunks.push(chunk);
-  }
-  try {
-    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-    return parsed as Record<string, unknown>;
-  } catch { throw new HttpError("请求内容不是有效 JSON。"); }
 }
 
 function requiredString(data: Record<string, unknown>, key: string, maxLength = 4000): string {
@@ -126,7 +113,7 @@ export async function createApp(options: ServerOptions = {}): Promise<{
   const dataDirectory = resolve(options.dataDirectory ?? process.env.IELTS_DATA_DIR ?? join(projectRoot, ".data"));
   const mediaDirectory = join(dataDirectory, "media");
   if (!options.store) mkdirSync(mediaDirectory, { recursive: true });
-  const store = options.store ?? new LearningStore(join(dataDirectory, "learning.sqlite"));
+  const store = options.store ?? new LearningStore(options.localAccounts ? ":memory:" : join(dataDirectory, "learning.sqlite"));
   const pluginRoot = resolve(options.pluginDirectory ?? join(projectRoot, "plugins"));
   const registry = options.registry ?? new PluginRegistry(pluginRoot);
   if (!options.registry) await registry.loadAll();
@@ -162,7 +149,10 @@ export async function createApp(options: ServerOptions = {}): Promise<{
   } else if (!options.activities) {
     console.warn(`[content-catalog] 题库未安装：${contentPath}`);
   }
-  const ai = options.aiClient ?? new AiClient();
+  const user = options.user;
+  const ai = options.aiClient ?? new AiClient(user && (async (model, usage) => {
+    await user.accounts.recordUsage(user.account.id, randomUUID(), "text", model, usage.input, usage.output, usage.costUsd);
+  }));
   const coach = new CoachService(store, registry, () => packagedActivities, ai);
   const planner = new AiPlanner(ai);
   const production = options.production ?? process.env.NODE_ENV === "production";
@@ -304,8 +294,62 @@ export async function createApp(options: ServerOptions = {}): Promise<{
     const path = parsed.pathname;
     const method = req.method ?? "GET";
 
+    if (path === "/api/health" && method === "GET") {
+      sendJson(res, 200, { ok: true, node: process.versions.node, sqlite: true });
+      return;
+    }
+
+    const accounts = options.localAccounts;
+    if (accounts && ["/api/", "/media/", "/plugin-assets/"].some((prefix) => path.startsWith(prefix))) {
+      const account = await authenticate(req, res, path, accounts, false);
+      if (!account) return;
+      const request = (async () => {
+        const learnerStore = new LearningStore(join(dataDirectory, "users", account.id + ".sqlite"), account.id);
+        const app = await createApp({
+          dataDirectory, store: learnerStore, registry, activities: packagedActivities, production,
+          aiClient: options.aiClient, user: { account, accounts }, releaseRegistry: false, deferStartupPlanning: true,
+        });
+        try { await app.handle(req, res); }
+        finally {
+          // Drain this request's planning work before closing its SQLite connection.
+          const cleanup = app.close().catch(() => console.error("[api] local request cleanup failed"));
+          backgroundJobs.add(cleanup);
+          void cleanup.then(() => backgroundJobs.delete(cleanup));
+        }
+      })();
+      backgroundJobs.add(request);
+      try { await request; }
+      finally { backgroundJobs.delete(request); }
+      return;
+    }
+
+    if (user && path === "/api/usage" && method === "GET") {
+      sendJson(res, 200, await user.accounts.usage(user.account.id));
+      return;
+    }
+    const voiceReport = path.match(/^\/api\/speaking\/calls\/([a-f0-9-]{36})\/usage$/);
+    if (user && voiceReport && method === "POST") {
+      const callId = voiceReport[1]!;
+      const call = await user.accounts.voiceCall(user.account.id, callId);
+      if (!call) throw new HttpError("找不到这次口语通话。", 404);
+      const body = await readJson(req, 12_000);
+      const responseId = requiredString(body, "responseId", 128);
+      if (!/^[a-zA-Z0-9_-]+$/.test(responseId)) throw new HttpError("口语响应编号无效。");
+      const usage = voiceUsage(body.usage, call.region);
+      await user.accounts.recordUsage(user.account.id, callId + ":" + responseId, "voice", call.model,
+        usage.input, usage.output, usage.costUsd, callId);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
     if (path === "/api/speaking/sdp" && method === "POST") {
       const answer = await exchangeSpeakingOffer(req);
+      if (user) {
+        const id = randomUUID();
+        const region = process.env.IELTS_REALTIME_HOST!.split(".")[1]!;
+        await user.accounts.openVoiceCall(user.account.id, id, speakingModel, region);
+        res.setHeader("X-IELTS-Call-Id", id);
+      }
       res.writeHead(200, { "content-type": "application/sdp", "cache-control": "no-store" });
       res.end(answer);
       return;
@@ -327,13 +371,6 @@ export async function createApp(options: ServerOptions = {}): Promise<{
       sendJson(res, 200, record);
       return;
     }
-    if (path === "/api/health" && method === "GET") {
-      sendJson(res, 200, { ok: true, node: process.versions.node, sqlite: true });
-      return;
-    }
-    if (path === "/api/auth/session" && method === "GET") { sendJson(res, 200, { authenticated: true }); return; }
-    if (path === "/api/auth/login" && method === "POST") { sendJson(res, 200, { authenticated: true }); return; }
-    if (path === "/api/auth/logout" && method === "POST") { sendJson(res, 200, { authenticated: true }); return; }
     if (path === "/api/plan-proposals/status" && method === "GET") { sendJson(res, 200, { proposal: await publicProposal() }); return; }
     if (path === "/api/bootstrap" && method === "GET") {
       sendJson(res, 200, await makeBootstrap());
@@ -713,18 +750,18 @@ export async function createApp(options: ServerOptions = {}): Promise<{
   });
 
   const ensurePlan = (recoverStale = false) => requestAiPlan(false, recoverStale);
-  if (!options.deferStartupPlanning) void requestAiPlan(false, true);
+  if (!options.deferStartupPlanning && !options.localAccounts) void requestAiPlan(false, true);
 
   return {
     server, store, registry, handle, ensurePlan,
     waitForBackgroundJobs: async () => { while (backgroundJobs.size) await Promise.allSettled([...backgroundJobs]); },
     close: async () => {
-      while (backgroundJobs.size) await Promise.allSettled([...backgroundJobs]);
       await new Promise<void>((resolveClose, rejectClose) => {
         if (!server.listening) { resolveClose(); return; }
         server.close((error) => error ? rejectClose(error) : resolveClose());
       });
-      try { await registry.releaseAll(); }
+      while (backgroundJobs.size) await Promise.allSettled([...backgroundJobs]);
+      try { if (options.releaseRegistry !== false) await registry.releaseAll(); }
       finally { await store.close(); }
     },
   };

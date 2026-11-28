@@ -144,7 +144,7 @@ export function SpeakingPage() {
         {!phase ? <>
           <label className="speech-topic">练习话题<select value={topicIndex} onChange={event => setTopicIndex(Number(event.target.value))}>
             {parts[part].topics.map((entry, index) => <option key={entry.title} value={index}>{entry.title}</option>)}</select></label>
-          <p className="speech-meta">{part === 2 && "准备 1 分钟，陈述最多 2 分钟。"}开始后将使用麦克风与百炼通话。共享档案保存文字复盘，录音不会保存。</p>
+          <p className="speech-meta">{part === 2 && "准备 1 分钟，陈述最多 2 分钟。"}开始后将使用麦克风与百炼通话。文字复盘保存在你的账号下。</p>
           <div className="speech-actions"><button className={"button " + (configuration ? "button-outline" : "button-primary")} disabled={!!configuration} onClick={start}><Icon name="mic" size={18} />开始练习</button>
           <button className={"button " + (configuration ? "button-primary" : "button-outline")} onClick={() => { selection.current++; setError(""); setDemo(true); }}><Icon name="play" size={16} />播放口语演示</button>
           {configuration && <span className="speech-config" role="status">{configuration} <button className="speech-link" onClick={() => setLoadAttempt(n => n + 1)}>重新检查</button></span>}</div>
