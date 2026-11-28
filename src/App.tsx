@@ -1,6 +1,8 @@
+import type { Account } from "./shared/accounts.js";
+import { UsagePanel } from "./components/UsagePanel.js";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { activitySummary, type ActivityMode, type AnswerDraft, type AttemptResult, type BootstrapData, type CoachMessage, type PlanTask, type PublicActivity, type Section } from "./shared/domain.js";
-import { api, ApiError, setUnauthorizedHandler } from "./services/api.js";
+import { api, ApiError, setRequestAccount, setUnauthorizedHandler } from "./services/api.js";
 import { startPlanPolling } from "./services/plan-polling.js";
 import { goalFormReducer, type GoalForm } from "./services/goal-form.js";
 import { Icon, type IconName } from "./components/Icon.js";
@@ -60,7 +62,49 @@ const parseHash = (hash: string): Page | undefined => {
   return routablePages.has(name) ? name as Page : undefined;
 };
 
+const accountChangedKey = "ielts-account-changed";
+
+function notifyAccountChange() {
+  try { localStorage.setItem(accountChangedKey, String(Date.now())); } catch { /* Storage is optional. */ }
+}
+
 export function App() {
+  const [account, setAccount] = useState<Account | null>();
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void api.authSession().then((session) => {
+      if (!active) return;
+      if (session.account) setRequestAccount(session.account.id);
+      setAccount(session.account);
+    }).catch((reason) => {
+      if (active) { setError(errorMessage(reason)); setAccount(null); }
+    });
+    const reload = () => window.location.reload();
+    const sync = (event: StorageEvent) => { if (event.key === accountChangedKey) reload(); };
+    setUnauthorizedHandler(reload);
+    window.addEventListener("storage", sync);
+    return () => {
+      active = false;
+      setUnauthorizedHandler(undefined);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  if (account === undefined) return <div className="loading-shell" aria-busy="true"><main className="skeleton-main"><span className="skeleton skeleton-heading" /><p className="loading-caption">正在检查登录状态…</p></main></div>;
+  if (!account) return <LoginView initialError={error} onSubmit={async (mode, identifier, password) => {
+    const session = await api[mode](identifier, password);
+    if (!session.account) throw new Error("会话尚未建立，请重试。");
+    setRequestAccount(session.account.id);
+    setAccount(session.account);
+    notifyAccountChange();
+  }} />;
+  return <LearningApp account={account} />;
+}
+
+function LearningApp({ account }: { account: Account }) {
+  const activeAttemptKey = "ielts-active-attempt:" + account.id;
   const [page, setPage] = useState<Page>(() => parseHash(window.location.hash) ?? "home");
   const [workspaceReturnPage, setWorkspaceReturnPage] = useState<Page>("home");
   const [data, setData] = useState<BootstrapData>();
@@ -78,8 +122,6 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pendingAttempt, setPendingAttempt] = useState("");
-  const [authReady, setAuthReady] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
   const [bootToken, setBootToken] = useState(0);
   const [exitPromptToken, setExitPromptToken] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -100,38 +142,6 @@ export function App() {
     const value = await api.bootstrap(signal);
     if (epoch === bootstrapEpoch.current && !signal?.aborted && !performing.current) setData(value);
     return value;
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void api.authSession().then((sessionState) => {
-      if (cancelled) return;
-      setAuthenticated(sessionState.authenticated);
-      setAuthReady(true);
-    }).catch((reason) => { if (!cancelled) { setError(errorMessage(reason)); setAuthReady(true); } });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    setUnauthorizedHandler(() => {
-      void api.authSession().then((state) => {
-        if (state.authenticated) return;
-        bootstrapEpoch.current++;
-        loaded.current = false;
-        setAuthenticated(false);
-        setData(undefined);
-        setSession(undefined);
-        setCoachOpen(false);
-        setCoachLines([]);
-        setCoachError("");
-        setFailedMessage("");
-        setPendingAttempt("");
-        setSubmitting(false);
-        setError("");
-        setToast("");
-      }).catch(() => undefined);
-    });
-    return () => setUnauthorizedHandler(undefined);
   }, []);
 
   /* 主题解析：只在偏好或系统配色真实变化时重导出，与首帧内联脚本同算法（幂等）。 */
@@ -174,12 +184,12 @@ export function App() {
   }, [page, session, preparation, data]);
 
   useEffect(() => {
-    if (!authReady || !authenticated || loaded.current) return;
+    if (loaded.current) return;
     let cancelled = false;
     void (async () => {
       try {
         // Restore an interrupted attempt while the catalog loads instead of after it.
-        const saved = localStorage.getItem("ielts-active-attempt");
+        const saved = localStorage.getItem(activeAttemptKey);
         const resume = saved
           ? api.resumeAttempt(saved).then((value) => ({ value }), (reason: unknown) => ({ reason }))
           : Promise.resolve(undefined);
@@ -187,13 +197,13 @@ export function App() {
         if (cancelled) return;
         setData(boot);
         if (resumed && "reason" in resumed) {
-          if (resumed.reason instanceof ApiError && (resumed.reason.status === 404 || resumed.reason.status === 410)) localStorage.removeItem("ielts-active-attempt");
+          if (resumed.reason instanceof ApiError && (resumed.reason.status === 404 || resumed.reason.status === 410)) localStorage.removeItem(activeAttemptKey);
           else if (resumed.reason instanceof ApiError && resumed.reason.status === 401) return;
           else setError("练习草稿暂时无法恢复：" + errorMessage(resumed.reason));
         } else if (resumed?.value) {
           const { activity, draft, result } = resumed.value;
           if (!activity || (!draft && !result)) {
-            localStorage.removeItem("ielts-active-attempt");
+            localStorage.removeItem(activeAttemptKey);
           } else {
             const restored = draft ?? {
               attemptId: saved!, activityId: activity.id, mode: result!.mode, answers: result!.answers,
@@ -210,7 +220,7 @@ export function App() {
       } catch (reason) { if (!cancelled) setError(errorMessage(reason)); }
     })();
     return () => { cancelled = true; };
-  }, [authReady, authenticated, bootToken]);
+  }, [activeAttemptKey, bootToken]);
 
   useEffect(() => {
     if (!data || data.planProposal.status !== "generating" || data.planProposal.recoverable || busy) return;
@@ -222,13 +232,15 @@ export function App() {
     });
   }, [data?.planProposal.id, data?.planProposal.status, data?.planProposal.recoverable, busy, refresh]);
 
-  const login = useCallback(async (password: string) => { await api.login(password); setAuthenticated(true); }, []);
   const logout = useCallback(async () => {
-    await api.logout();
-    bootstrapEpoch.current++;
-    setAuthenticated(false); setData(undefined); setSession(undefined);
-    setCoachOpen(false); setCoachLines([]); setCoachError(""); setFailedMessage(""); setPendingAttempt(""); setSubmitting(false); setError(""); setToast("");
-    loaded.current = false;
+    try {
+      await api.logout();
+      notifyAccountChange();
+      window.location.reload();
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 401) window.location.reload();
+      else setError(errorMessage(reason));
+    }
   }, []);
 
   useEffect(() => {
@@ -285,7 +297,7 @@ export function App() {
       ? api.startMock(activity.pluginId as "reading" | "listening", activity.mockId!, durations)
       : api.startAttempt(activity.id, mode, taskId, reviewIds, questionIds));
     if (!value) return false;
-    localStorage.setItem("ielts-active-attempt", value.draft.attemptId);
+    localStorage.setItem(activeAttemptKey, value.draft.attemptId);
     setSession({ activity: value.activity, draft: value.draft });
     setQuestionId(value.activity.questions[0]?.id ?? "");
     setCoachOpen(false); setCoachLines([]); setPreparation(undefined); navigate("workspace");
@@ -308,7 +320,7 @@ export function App() {
     setBusy(true); setSubmitting(true); setError("");
     try {
       const result = (await api.submit(attemptId, answers, questionTimeSeconds)).result;
-      localStorage.removeItem("ielts-active-attempt");
+      localStorage.removeItem(activeAttemptKey);
       setSession((current) => current ? { ...current, draft: { ...current.draft, answers, questionTimeSeconds }, result } : current);
       setCoachOpen(false); setToast("练习已保存：" + result.score + " / " + result.total + " 题答对。");
       // The attempt is already persisted; refresh the shelf in the background so the
@@ -378,7 +390,7 @@ export function App() {
   }, [data?.aiConfigured, questionId, session]);
 
   const goHome = useCallback(() => {
-    if (session?.result) localStorage.removeItem("ielts-active-attempt");
+    if (session?.result) localStorage.removeItem(activeAttemptKey);
     navigate(workspaceReturnPage === "workspace" ? "home" : workspaceReturnPage); setCoachOpen(false);
     void refresh().catch((reason) => setError(errorMessage(reason)));
   }, [navigate, refresh, session, workspaceReturnPage]);
@@ -391,8 +403,6 @@ export function App() {
     });
   }, []);
 
-  if (!authReady) return <div className="loading-shell" aria-busy="true"><main className="skeleton-main"><span className="skeleton skeleton-heading" /><p className="loading-caption">正在检查访问权限…</p></main></div>;
-  if (!authenticated) return <LoginView onLogin={login} />;
   if (!data) return <div className="loading-shell" aria-busy="true">
     <aside className="skeleton-rail" aria-hidden="true"><span className="skeleton skeleton-brand" />{Array.from({ length: 6 }, (_, index) => <span className="skeleton skeleton-nav" key={index} />)}</aside>
     <main className="skeleton-main" aria-hidden="true"><span className="skeleton skeleton-heading" /><span className="skeleton skeleton-sub" /><span className="skeleton skeleton-block" /><span className="skeleton skeleton-block" /><span className="skeleton skeleton-block" /></main>
@@ -420,9 +430,9 @@ export function App() {
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
       {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} pendingAttempt={pendingAttempt} />}
-      {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} themeMode={themeMode} onThemeChange={(mode) => { setThemeMode(mode); localStorage.setItem(themeKey, mode); }} />}
+      {page === "settings" && <SettingsPage account={account} data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} themeMode={themeMode} onThemeChange={(mode) => { setThemeMode(mode); localStorage.setItem(themeKey, mode); }} />}
       {page === "preparation" && preparation && <ExamPreparation key={preparation.activity.id} preparation={preparation} busy={busy} onBack={() => { setPreparation(undefined); navigate(workspaceReturnPage); setError(""); }} onStart={launchPreparation} />}
-      {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} exitPromptToken={exitPromptToken} />}
+      {page === "workspace" && session && <WorkspacePage activeAttemptKey={activeAttemptKey} session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} exitPromptToken={exitPromptToken} />}
     </main>
 
     {coachOpen && session && currentQuestion && <CoachDrawer activity={session.activity} question={currentQuestion} draft={session.draft} result={session.result} data={data} lines={coachLines} loading={coachLoading} error={coachError} failedMessage={failedMessage} onClose={() => setCoachOpen(false)} onSend={sendCoach} onRetry={() => failedMessage && void sendCoach(failedMessage)} />}
@@ -633,7 +643,7 @@ function ProfileForm({ value, busy, saved, error, onChange, onSubmit }: { value:
     <label className="field"><span>每日可投入时间</span><select className="input" value={value.dailyMinutes} onChange={(event) => onChange({ ...value, dailyMinutes: Number(event.target.value) })}>{[15, 20, 30, 45, 60, 90, 120, 180].map((minutes) => <option key={minutes} value={minutes}>{minutes} 分钟</option>)}</select></label>
   </div></fieldset><div className="profile-form-actions"><p className={"profile-save-feedback" + (error ? " is-error" : "")} role={error ? "alert" : "status"}>{busy ? "正在保存目标，请稍候…" : error || (saved ? "目标已保存。" : "")}</p><button type="submit" className="button button-primary" disabled={busy || saved}>{busy ? "保存中…" : saved ? "已保存" : "保存目标"} <Icon name={saved ? "circle-check" : "arrow"} size={15} /></button></div></form>;
 }
-function SettingsPage({ data, busy, error, onSave, onLogout, themeMode, onThemeChange }: { data: BootstrapData; busy: boolean; error: string; onSave: (value: Omit<BootstrapData["profile"], "id" | "updatedAt">) => Promise<boolean>; onLogout: () => void; themeMode: ThemeMode; onThemeChange: (mode: ThemeMode) => void }) {
+function SettingsPage({ account, data, busy, error, onSave, onLogout, themeMode, onThemeChange }: { account: Account; data: BootstrapData; busy: boolean; error: string; onSave: (value: Omit<BootstrapData["profile"], "id" | "updatedAt">) => Promise<boolean>; onLogout: () => void; themeMode: ThemeMode; onThemeChange: (mode: ThemeMode) => void }) {
   const [{ value: form, saved }, updateForm] = useReducer(goalFormReducer, { value: data.profile, dirty: false, saved: false });
   useEffect(() => {
     updateForm({ type: "sync", value: data.profile });
@@ -641,7 +651,8 @@ function SettingsPage({ data, busy, error, onSave, onLogout, themeMode, onThemeC
   return <div className="page-content"><PageHeader eyebrow="Settings" title="设置" subtitle="调整备考目标和每天的学习节奏。" />
     <section className="profile-form profile-edit"><div><h2>学习偏好</h2><p className="profile-note">这些设置会帮助我们安排适合你的练习时间。你可以随时调整。</p></div><ProfileForm value={form} busy={busy} saved={saved} error={error} onChange={(value) => updateForm({ type: "change", value })} onSubmit={(event) => { event.preventDefault(); if (!busy && !saved) void onSave({ ...form, setupComplete: true }).then((ok) => { if (ok) updateForm({ type: "saved", value: form }); }); }} /></section>
     <section className="profile-form profile-edit"><div><h2>界面</h2><p className="profile-note">深色适合夜间刷题；考试界面始终与真实机考一致，保持浅色。</p></div><label className="field"><span>外观</span><select className="input" value={themeMode} onChange={(event) => onThemeChange(event.target.value as ThemeMode)}>{themeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></section>
-    <section className="profile-form profile-edit account-panel"><div><h2>演示账号</h2><p className="profile-note">所有使用演示密码登录的人会共用这一份学习记录。</p></div><button className="button button-soft" onClick={onLogout}>退出登录</button></section>
+    <UsagePanel />
+    <section className="profile-form profile-edit account-panel"><div><h2>我的账号</h2><p className="profile-note">{account.username}</p></div><button className="button button-soft" onClick={onLogout}>退出登录</button></section>
   </div>;
 }
 
@@ -723,8 +734,8 @@ function restoreExamView(root: HTMLElement, snapshot: ExamViewSnapshot): () => v
   };
 }
 
-function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted, exitPromptToken }: {
-  session: Session; plugin?: BootstrapData["plugins"][number]; skillLabels: Record<string, string>; busy: boolean; submitting: boolean; error: string; onBack: () => void; onAnswer: (answers: Record<string, string>) => void;
+function WorkspacePage({ activeAttemptKey, session, plugin, skillLabels, busy, submitting, error, onBack, onAnswer, onQuestion, onSubmit, onCoach, onCause, onAudioInterrupted, exitPromptToken }: {
+  activeAttemptKey: string; session: Session; plugin?: BootstrapData["plugins"][number]; skillLabels: Record<string, string>; busy: boolean; submitting: boolean; error: string; onBack: () => void; onAnswer: (answers: Record<string, string>) => void;
   onQuestion: (id: string) => void; onSubmit: (answers: Record<string, string>, questionTimeSeconds: Record<string, number>) => Promise<boolean>;
   onCoach: () => void; onCause: (qid: string, tag: string, cause: string) => Promise<boolean>; onAudioInterrupted: (reason: string) => void; exitPromptToken: number;
 }) {
@@ -993,7 +1004,7 @@ function WorkspacePage({ session, plugin, skillLabels, busy, submitting, error, 
       await saveQueue.current.catch(() => undefined);
       await api.abandonAttempt(draft.attemptId);
       try {
-        window.localStorage.removeItem("ielts-active-attempt");
+        window.localStorage.removeItem(activeAttemptKey);
         window.localStorage.removeItem(clockStorageKey);
         window.localStorage.removeItem("ielts-exam-flags-" + draft.attemptId);
         window.localStorage.removeItem("ielts-exam-part-" + draft.attemptId);

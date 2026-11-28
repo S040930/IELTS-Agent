@@ -314,3 +314,14 @@
 .cause-fields .field span { color: var(--muted); font-size: 9.5px; }
 .cause-fields .input { min-height: 36px; padding: 0 8px; font-size: var(--text-xs); }
 .cause-fields .button { min-height: 36px; padding: 0 10px; }
+
+.profile-form.usage-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.usage-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.usage-group { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.usage-group h3 { margin: 0; font-size: 14px; }
+.usage-model { margin-top: 10px; }
+.usage-model + .usage-model { border-top: 1px solid var(--line); padding-top: 10px; }
+.usage-model-name { margin: 0 0 8px; overflow-wrap: anywhere; color: var(--muted); font-size: 13px; }
+.usage-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; margin: 0; }
+.usage-values dt { color: var(--muted); font-size: 12px; }
+.usage-values dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

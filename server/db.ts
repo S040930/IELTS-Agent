@@ -77,10 +77,10 @@ export class LearningStore {
     return row ? JSON.parse(String(row.record_json)) : undefined;
   }
 
-  constructor(databasePath: string) {
+  constructor(databasePath: string, private readonly learnerId = "local-learner") {
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new DatabaseSync(databasePath);
-    this.database.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+    this.database.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS profile (
         id TEXT PRIMARY KEY, target_listening REAL NOT NULL, target_reading REAL NOT NULL,
@@ -157,8 +157,8 @@ export class LearningStore {
     this.database.prepare("UPDATE plan_tasks SET status='expired' WHERE status='pending' AND question_ids_json='[]'").run();
     this.database.prepare(`INSERT OR IGNORE INTO profile
       (id, target_listening, target_reading, exam_date, daily_minutes, updated_at, setup_complete)
-      VALUES ('local-learner', 7, 7, ?, 45, ?, 0)`)
-      .run(this.defaultExamDate(), utcNow());
+      VALUES (?, 7, 7, ?, 45, ?, 0)`)
+      .run(this.learnerId, this.defaultExamDate(), utcNow());
   }
 
   private defaultExamDate(): string {
@@ -168,15 +168,15 @@ export class LearningStore {
   }
 
   profile(): LearnerProfile {
-    const row = this.database.prepare("SELECT * FROM profile WHERE id='local-learner'").get() as {
+    const row = this.database.prepare("SELECT * FROM profile WHERE id=?").get(this.learnerId) as {
       id: string; target_listening: number; target_reading: number; exam_date: string; daily_minutes: number; updated_at: string; setup_complete: number;
     };
     return { id: row.id, targetListening: row.target_listening, targetReading: row.target_reading, examDate: row.exam_date, dailyMinutes: row.daily_minutes, updatedAt: row.updated_at, setupComplete: Boolean(row.setup_complete) };
   }
 
   saveProfile(input: Pick<LearnerProfile, "targetListening" | "targetReading" | "examDate" | "dailyMinutes">): LearnerProfile {
-    this.database.prepare(`UPDATE profile SET target_listening=?, target_reading=?, exam_date=?, daily_minutes=?, updated_at=?, setup_complete=1 WHERE id='local-learner'`)
-      .run(input.targetListening, input.targetReading, input.examDate, input.dailyMinutes, utcNow());
+    this.database.prepare(`UPDATE profile SET target_listening=?, target_reading=?, exam_date=?, daily_minutes=?, updated_at=?, setup_complete=1 WHERE id=?`)
+      .run(input.targetListening, input.targetReading, input.examDate, input.dailyMinutes, utcNow(), this.learnerId);
     return this.profile();
   }
 

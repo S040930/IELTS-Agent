@@ -1,3 +1,4 @@
+import type { AuthSession, UsageSummary } from "../shared/accounts.js";
 import type { SpeakingRecord, SpeakingSummary } from "../shared/speaking.js";
 import { isBootstrapData, isProposalResponse } from "./response-validation.js";
 import type { ActivityMode, AnswerDraft, AttemptResult, BootstrapData, CoachMessage, PublicActivity } from "../shared/domain.js";
@@ -7,6 +8,13 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+let accountId: string | undefined;
+export function setRequestAccount(id: string): void { accountId = id; }
+
+function accountHeaders(): Record<string, string> {
+  return accountId ? { "x-ielts-account": accountId } : {};
 }
 
 let onUnauthorized: (() => void) | undefined;
@@ -41,7 +49,7 @@ async function request<T>(path: string, init?: RequestInit, validate?: (body: un
   try {
     let response: Response;
     try {
-      response = await fetch(path, { ...init, headers: { ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }), ...init?.headers }, cache: "no-store", signal: deadline.signal });
+      response = await fetch(path, { ...init, headers: { ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }), ...accountHeaders(), ...init?.headers }, cache: "no-store", signal: deadline.signal });
     } catch (reason) {
       if (init?.signal?.aborted) throw reason;
       if (deadline.timedOut()) throw new Error("请求超时，操作结果尚未确认，请重新加载核对状态。");
@@ -74,16 +82,27 @@ export const api = {
   speakingHistory: () => request<{ sessions: SpeakingSummary[]; configurationError: string | null }>("/api/speaking/sessions"),
   speakingRecord: (id: string) => request<SpeakingRecord>("/api/speaking/sessions/" + encodeURIComponent(id)),
   saveSpeaking: (record: SpeakingRecord) => request<{ id: string }>("/api/speaking/sessions", { method: "POST", body: JSON.stringify(record) }),
-  async speakingOffer(sdp: string, signal: AbortSignal): Promise<string> {
-    const response = await fetch("/api/speaking/sdp", { method: "POST", headers: { "content-type": "application/sdp" }, body: sdp, signal });
-    if (response.ok) return response.text();
+  async speakingOffer(sdp: string, signal: AbortSignal): Promise<{ answer: string; callId: string | null }> {
+    const response = await fetch("/api/speaking/sdp", { method: "POST", headers: { "content-type": "application/sdp", ...accountHeaders() }, body: sdp, signal });
+    if (response.ok) return { answer: await response.text(), callId: response.headers.get("x-ielts-call-id") };
     if (response.status === 401) onUnauthorized?.();
     const body = await response.json().catch(() => ({}));
     throw new ApiError(body.error ?? "实时通话连接失败，请重试。", response.status);
   },
-  authSession: () => request<{ authenticated: boolean }>("/api/auth/session"),
-  login: (password: string) => request<{ authenticated: boolean }>("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
-  logout: () => request<{ authenticated: boolean }>("/api/auth/logout", { method: "POST", body: "{}" }),
+  async reportSpeakingUsage(callId: string, responseId: string, usage: unknown): Promise<void> {
+    const path = "/api/speaking/calls/" + encodeURIComponent(callId) + "/usage";
+    const init: RequestInit = { method: "POST", body: JSON.stringify({ responseId, usage }), keepalive: true };
+    try { await request(path, init); }
+    catch (error) {
+      if (error instanceof ApiError && error.status < 500) return;
+      await request(path, init);
+    }
+  },
+  authSession: () => request<AuthSession>("/api/auth/session"),
+  login: (identifier: string, password: string) => request<AuthSession>("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) }),
+  register: (email: string, password: string) => request<AuthSession>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
+  logout: () => request<AuthSession>("/api/auth/logout", { method: "POST", body: "{}" }),
+  usage: (signal?: AbortSignal) => request<UsageSummary>("/api/usage", { signal }),
   bootstrap: (signal?: AbortSignal) => bootstrapRequest("/api/bootstrap", { signal }),
   planProposalStatus: (signal?: AbortSignal) => request<{ proposal: BootstrapData["planProposal"] }>("/api/plan-proposals/status", { signal }, isProposalResponse),
   setProfile: (profile: Omit<BootstrapData["profile"], "id" | "updatedAt">) => bootstrapRequest("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
@@ -103,7 +122,7 @@ export const api = {
   askCoach: (conversationId: string, activityId: string, questionId: string, attemptId: string | undefined, message: string) => request<{ message: CoachMessage }>("/api/coach", { method: "POST", body: JSON.stringify({ conversationId, activityId, questionId, attemptId, message }) }, undefined, COACH_DEADLINE_MS),
   coachHistory: (conversationId: string) => request<{ messages: CoachMessage[] }>("/api/coach/history?conversationId=" + encodeURIComponent(conversationId)),
   markInterrupted: (attemptId: string, reason: string) => {
-    void fetch("/api/attempts/" + attemptId + "/interrupt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }), keepalive: true }).catch(() => undefined);
+    void fetch("/api/attempts/" + attemptId + "/interrupt", { method: "POST", headers: { "content-type": "application/json", ...accountHeaders() }, body: JSON.stringify({ reason }), keepalive: true }).catch(() => undefined);
   },
   abandonAttempt: (attemptId: string) => request<{ ok: true }>("/api/attempts/" + encodeURIComponent(attemptId) + "/abandon", { method: "POST", body: "{}" }),
 };

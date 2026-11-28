@@ -13,11 +13,12 @@ interface Events {
 interface ModelEvent {
   type: string; event_id?: string; item_id?: string; response_id?: string;
   delta?: string; text?: string; stash?: string; transcript?: string;
-  response?: { id: string; status: string };
+  response?: { id: string; status: string; usage?: unknown };
 }
 
 export class SpeakingCall {
   private peer?: RTCPeerConnection;
+  private usageCallId?: string;
   private stream?: MediaStream;
   private sender?: RTCRtpSender;
   private eventsChannel?: RTCDataChannel;
@@ -93,7 +94,8 @@ export class SpeakingCall {
           };
         });
       }
-      const answer = await api.speakingOffer(peer.localDescription!.sdp, this.controller.signal);
+      const { answer, callId } = await api.speakingOffer(peer.localDescription!.sdp, this.controller.signal);
+      this.usageCallId = callId ?? undefined;
       if (!this.closed) await peer.setRemoteDescription({ type: "answer", sdp: answer.trim().replace(/\r?\n/g, "\r\n") + "\r\n" });
     } catch (error) {
       const reason = error instanceof Error ? error : new Error("无法开始语音练习。");
@@ -175,6 +177,9 @@ export class SpeakingCall {
       this.reviewText = event.text ?? "";
     }
     if (type !== "response.done") return;
+    if (this.usageCallId && event.response?.id) {
+      void api.reportSpeakingUsage(this.usageCallId, event.response.id, event.response.usage).catch(() => undefined);
+    }
     if (this.activeResponse === event.response?.id) this.activeResponse = undefined;
     if (this.reviewStep === "respond" && this.reviewResponse && this.reviewResponse === event.response?.id) {
       let feedback: SpeakingFeedback | null = null;

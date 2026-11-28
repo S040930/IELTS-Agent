@@ -3,14 +3,14 @@
 ## 架构与入口
 
 - React、Vite、TypeScript 前端；Node.js 业务服务提供练习、判分、AI 规划与导师。
-- 本机运行使用 SQLite；Vercel Function 使用 Neon Postgres、私有 Blob、密码会话认证。
+- 本机运行使用 SQLite；Vercel Function 使用 Neon Postgres、私有 Blob、个人账号与 Cookie 会话认证。
 - `api/[...path].ts` 是 Vercel Function 入口，`server/index.ts` 共享业务路由，`server/postgres-store.ts` 是云端学习仓储。
 - `plugins/` 保存插件；云端构建将插件打包，新增插件需重新部署。
 - 本机启动和云端部署分别见 README 的对应章节。
 
 ## 长期决策
 
-- 云端只有一个共享学习档案；第一次部署为空档案，不迁移本机 `.data/learning.sqlite`。
+- 题库共享，个人学习数据及 AI 用量按账号访问。升级后旧共享档案保留在数据库中，新账号从空白档案开始。
 - 题目清单导入 Neon，音频流式上传到私有 Blob；个人作答和目标留在 SQLite 或 Neon 数据库，不进内容包。
 - 登录、AI 密钥和 Blob 令牌只由服务器读取；题目 API 移除答案与解析，媒体请求通过登录鉴权代理。
 - 所有 npm 依赖精确锁定；运行和开发依赖分开。
