@@ -1,62 +1,83 @@
-/* 口语页：白色卡片 + 靛蓝主色，与全站同一套圆角与投影 */
+/* 口语页：纯白浮面 + 清爽淡靛声学舞台 + 四维评分卡 */
 .page-content.speech-page { max-width: 1000px; }
-.speech-panel { padding: 22px 24px 26px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-sm); }
+.speech-panel { padding: 24px 26px 28px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-sm); }
 .speech-heading, .speech-actions, .speech-signal { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .speech-heading { justify-content: space-between; }
-.speech-panel h2 { margin: 6px 0 10px; color: var(--ink); font-size: 18px; font-weight: 700; letter-spacing: -.01em; line-height: 1.35; }
+.speech-panel h2 { margin: 4px 0 8px; color: var(--ink); font-size: 17px; font-weight: 600; letter-spacing: -.015em; line-height: 1.35; }
 .speech-meta, .speech-config, .speech-transcript p { color: var(--muted); font-size: 12.5px; line-height: 1.65; }
-.speech-meta { margin: 4px 0 10px; }
-.speech-question { max-width: 24em; margin: 18px 0; color: var(--ink); font-size: clamp(20px, 2vw, 25px); font-weight: 700; letter-spacing: -.02em; line-height: 1.35; }
-.speech-cues { display: grid; gap: 6px; margin: 0 0 18px; padding: 12px 16px; border-left: 3px solid var(--accent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--accent-tint); color: var(--subtle-ink); font-size: 13.5px; line-height: 1.55; }
-.speech-segments { display: inline-flex; max-width: 100%; gap: 4px; margin: 0 0 18px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
-.speech-segments button { display: grid; gap: 2px; min-width: 0; padding: 8px clamp(10px, 3vw, 22px); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); text-align: left; cursor: pointer; transition: background .14s ease, color .14s ease, box-shadow .14s ease; }
+.speech-meta { margin: 2px 0 10px; }
+.speech-question { max-width: 26em; margin: 18px 0; color: var(--ink); font-size: clamp(20px, 2.1vw, 24px); font-weight: 600; letter-spacing: -.02em; line-height: 1.38; }
+.speech-cues { display: grid; gap: 7px; margin: 0 0 18px; padding: 14px 18px; border: 1px solid var(--panel-accent-border); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--accent-tint); color: var(--ink-soft); font-size: 13.5px; line-height: 1.55; }
+.speech-segments { position: relative; display: inline-grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 100%; gap: 4px; margin: 0 0 18px; padding: 4px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-2); }
+.speech-segments::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 16px) / 3); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--specular-top), var(--shadow-xs); transform: translateX(calc(var(--seg-index, 0) * (100% + 4px))); transition: transform .26s var(--ease-out); pointer-events: none; }
+.speech-segments button { position: relative; z-index: 1; display: grid; gap: 2px; min-width: 0; padding: 7px clamp(10px, 3vw, 20px); border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-weight: 500; text-align: left; cursor: pointer; transition: color .18s ease; }
 .speech-segments button:hover { color: var(--ink); }
-.speech-segments span { font-size: 10.5px; font-weight: 500; }
-.speech-segments [aria-pressed=true] { background: var(--surface); color: var(--accent-ink); box-shadow: var(--shadow-xs); }
-.speech-segments [aria-pressed=true] span { color: inherit; opacity: .75; }
+.speech-segments span { font-size: 10.5px; font-weight: 500; opacity: .82; }
+.speech-segments [aria-pressed=true] { border-color: transparent; background: transparent; color: var(--ink); font-weight: 600; box-shadow: none; }
+.speech-segments [aria-pressed=true] span { color: var(--accent-ink); opacity: .9; }
 .speech-topic { display: grid; width: fit-content; gap: 7px; margin: 18px 0 12px; color: var(--subtle-ink); font-size: 12px; font-weight: 600; }
-.speech-topic select { max-width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); font-size: 13.5px; font-weight: 400; }
-.speech-actions { margin-top: 16px; gap: 10px; }
+.speech-topic select { max-width: 100%; min-width: 180px; height: auto; min-height: 40px; padding: 9px 12px; border: 1px solid var(--border-input); border-radius: var(--radius-md); background-color: var(--surface-2); color: var(--ink); font-size: 13.5px; font-weight: 400; line-height: 20px; cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.speech-topic select:focus { border-color: var(--accent); background-color: var(--surface); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.speech-actions { margin-top: 18px; gap: 10px; }
 .speech-link { padding: 0; border: 0; background: none; color: var(--accent-ink); font: inherit; font-size: 12.5px; font-weight: 600; text-decoration: none; cursor: pointer; }
 .speech-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.speech-history { margin-top: 22px; }
-.speech-history h2 { margin: 0 0 10px; padding: 0; border: 0; color: var(--ink); font-size: 15px; font-weight: 600; }
+.speech-history { margin-top: 24px; }
+.speech-history h2 { margin: 0 0 10px; padding: 0; border: 0; color: var(--ink); font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
 .speech-history ul, .speech-transcript ol { margin: 0; padding: 0; list-style: none; }
 .speech-history ul { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
 .speech-history li + li, .speech-transcript li + li { border-top: 1px solid var(--hairline); }
-.speech-history button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 16px; border: 0; background: transparent; color: var(--ink); font-size: 13px; text-align: left; cursor: pointer; transition: background .14s ease; }
-.speech-history button:hover { background: var(--surface-2); }
+.speech-history button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 18px; border: 0; background: transparent; color: var(--ink); font-size: 13.5px; font-weight: 500; text-align: left; cursor: pointer; transition: background .14s ease; }
+.speech-history button:hover { background: var(--highlight-surface); }
+.speech-history button svg { color: var(--line-strong); transition: transform .18s var(--ease-out), color .16s ease; }
+.speech-history button:hover svg { color: var(--accent); transform: translateX(3px); }
 .speech-history small { margin-left: auto; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.speech-signal { min-height: 148px; flex-direction: column; justify-content: center; gap: 14px; margin: 18px 0; border: 1px solid var(--accent-line); border-radius: var(--radius-lg); background: var(--accent-tint); color: var(--accent-ink); font-size: 12px; font-weight: 600; }
-.speech-wave { display: inline-flex; height: 46px; align-items: center; gap: 4px; }
-.speech-wave i { display: block; width: 4px; height: 100%; border-radius: var(--radius-pill); background: currentColor; transition: transform 150ms linear; }
-.speech-clock { padding: 4px 10px; border: 0; border-radius: var(--radius-pill); background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; box-shadow: var(--shadow-xs); }
+
+/* 声学舞台：清爽淡靛蓝面板 + 中心柔光 + 9 柱精细声波 */
+.speech-signal { position: relative; overflow: hidden; min-height: 152px; flex-direction: column; justify-content: center; gap: 14px; margin: 18px 0; border: 1px solid var(--panel-accent-border); border-radius: var(--radius-lg); background: radial-gradient(280px 140px at 50% 44%, var(--accent-weak), transparent 72%), linear-gradient(180deg, var(--panel-accent-bg) 0%, var(--panel-accent-bg-2) 100%); color: var(--panel-accent-ink); font-size: 12px; font-weight: 600; box-shadow: none; transition: border-color .25s ease, background .25s ease; }
+.speech-signal [role="status"] { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--surface-glass); backdrop-filter: blur(10px) saturate(1.25); -webkit-backdrop-filter: blur(10px) saturate(1.25); color: var(--subtle-ink); font-size: 11.5px; font-weight: 500; letter-spacing: .01em; box-shadow: var(--specular-top), var(--shadow-xs); }
+.speech-signal[data-active="true"] [role="status"]::before { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); content: ""; }
+.speech-wave { display: inline-flex; height: 46px; align-items: center; gap: 5px; color: var(--accent); }
+.speech-wave i { display: block; width: 3.5px; height: 100%; border-radius: var(--radius-pill); background: currentColor; transition: transform 140ms linear; }
+.speech-clock { padding: 5px 12px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink); font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; }
 .speech-transcript { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--hairline); }
 .speech-transcript summary { color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
 .speech-transcript ol { max-height: 42vh; overflow-y: auto; }
-.speech-transcript li { display: grid; grid-template-columns: 3.2em 1fr; gap: 10px; padding: 9px 0; font-size: 12.5px; line-height: 1.65; overflow-wrap: anywhere; }
-.speech-transcript li > span:first-child { color: var(--muted); font-size: 11px; }
+.speech-transcript li { display: grid; grid-template-columns: 3.6em 1fr; gap: 10px; padding: 10px 0; font-size: 12.5px; line-height: 1.65; overflow-wrap: anywhere; }
+.speech-transcript li > strong { color: var(--subtle-ink); font-size: 11.5px; font-weight: 600; }
 .speech-notice { margin: 0 0 16px; padding: 11px 14px; border: 1px solid var(--danger-line); border-radius: var(--radius-md); background: var(--danger-tint); color: var(--danger); font-size: 12.5px; }
-.speech-review blockquote { margin: 12px 0; padding: 10px 16px; border-left: 3px solid var(--accent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--accent-tint); }
-.speech-review small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
-.speech-ratings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; margin: 16px 0 0; }
-.speech-ratings div { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
-.speech-ratings strong { color: var(--muted); font-size: 11.5px; font-weight: 600; }
-.speech-ratings dd { margin: 6px 0 0; color: var(--ink); font-size: 13px; line-height: 1.55; }
+
+/* 口语复盘 */
+.speech-review h3 { margin: 20px 0 8px; color: var(--ink); font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.speech-review > p { color: var(--ink-soft); font-size: 13.5px; line-height: 1.65; }
+.speech-review blockquote { margin: 10px 0; padding: 12px 16px; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--surface-2); color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+.speech-review blockquote + blockquote { border-color: var(--panel-accent-border); border-left-color: var(--accent); background: var(--accent-tint); }
+.speech-review small { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.speech-ratings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; margin: 14px 0 0; }
+.speech-ratings div { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
+.speech-ratings dt { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--subtle-ink); font-size: 12px; font-weight: 600; }
+.speech-ratings strong { color: var(--ink); font-size: 17px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.speech-ratings dd { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
 
 @media (prefers-reduced-motion: reduce) {
   .speech-wave i { transform: scaleY(.26) !important; }
-  .speech-wave i:nth-child(2n) { transform: scaleY(.4) !important; }
+  .speech-wave i:nth-child(2n) { transform: scaleY(.44) !important; }
+  .speech-wave i:nth-child(3n) { transform: scaleY(.34) !important; }
 }
 
-.demo-stages { display: flex; gap: 6px; margin: 16px 0; padding: 0; list-style: none; }
-.demo-stages li { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); color: var(--muted); font-size: 12px; transition: border-color .22s, background .22s, color .22s; }
-.demo-stages .reached { border-color: var(--accent-line); background: var(--accent-wash); color: var(--accent-ink); }
-.demo-stages [aria-current] { border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-/* 演示双人格：考官走靛蓝，学员走中性墨色 */
-.speech-demo .speech-signal[data-speaker="learner"] { border-color: var(--line); background: var(--surface-2); color: var(--ink-soft); }
+.demo-stages { display: flex; gap: 8px; margin: 16px 0; padding: 0; list-style: none; }
+.demo-stages li { flex: 1; padding: 8px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-2); color: var(--muted); font-size: 12px; transition: border-color .22s ease, background .22s ease, color .22s ease; }
+.demo-stages .reached { border-color: var(--panel-accent-border); background: var(--accent-tint); color: var(--accent-ink); }
+.demo-stages [aria-current] { border-color: var(--accent-line); background: var(--accent-wash); color: var(--panel-accent-ink); font-weight: 600; }
+/* 演示双人格：考官走清亮靛蓝，学员走清透青碧绿 */
+.speech-demo .speech-signal[data-speaker="learner"] { border-color: rgba(11, 107, 96, .24); background: radial-gradient(280px 140px at 50% 44%, rgba(11, 107, 96, .10), transparent 72%), linear-gradient(180deg, var(--tone-reading-tint) 0%, var(--panel-accent-bg-2) 100%); }
+:root[data-theme="dark"] .speech-demo .speech-signal[data-speaker="learner"] { border-color: rgba(90, 214, 198, .26); }
+.speech-demo .speech-signal[data-speaker="learner"] .speech-wave { color: var(--tone-reading); }
+.speech-demo .speech-signal[data-speaker="learner"] [role="status"]::before { background: var(--tone-reading); box-shadow: 0 0 0 3px rgba(11, 107, 96, .20); }
 .demo-caption { min-height: 112px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-2); animation: page-in-soft .2s ease both; }
 .demo-caption strong { color: var(--muted); font-size: 11.5px; font-weight: 600; }
 .demo-caption p { margin: 6px 0 0; color: var(--ink); font-size: clamp(17px, 2vw, 22px); font-weight: 500; line-height: 1.45; }
 .demo-caption ul { display: grid; gap: 4px; margin: 8px 0 0; padding-left: 18px; color: var(--subtle-ink); font-size: 13px; line-height: 1.55; }
-.demo-progress { display: block; width: 100%; height: 6px; margin-top: 18px; border-radius: var(--radius-pill); accent-color: var(--accent); }
+.demo-progress { display: block; width: 100%; height: 5px; margin-top: 18px; overflow: hidden; border: 0; border-radius: var(--radius-pill); background: var(--surface-3); appearance: none; -webkit-appearance: none; accent-color: var(--accent-fill); }
+.demo-progress::-webkit-progress-bar { border-radius: var(--radius-pill); background: var(--surface-3); }
+.demo-progress::-webkit-progress-value { border-radius: var(--radius-pill); background: var(--accent-fill); transition: width .12s linear; }
+.demo-progress::-moz-progress-bar { border-radius: var(--radius-pill); background: var(--accent-fill); }

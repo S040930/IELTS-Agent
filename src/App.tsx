@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { activitySummary, type ActivityMode, type AnswerDraft, type AttemptResult, type BootstrapData, type CoachMessage, type PlanTask, type PublicActivity, type Section } from "./shared/domain.js";
 import { api, ApiError, setUnauthorizedHandler } from "./services/api.js";
 import { startPlanPolling } from "./services/plan-polling.js";
@@ -11,12 +11,21 @@ import { ExamPreparation, type Preparation } from "./components/ExamPreparation.
 type Page = "speaking" | "home" | "listening" | "reading" | "mock" | "review" | "profile" | "settings" | "workspace" | "preparation";
 type Session = { activity: PublicActivity; draft: AnswerDraft; result?: AttemptResult };
 type CoachLine = { role: "user" | "assistant"; text: string; id: string };
-const navItems: Array<{ page: Page; label: string; icon: IconName }> = [
-  { page: "home", label: "今日学习", icon: "home" }, { page: "listening", label: "听力练习", icon: "headphones" },
-  { page: "reading", label: "阅读练习", icon: "book" }, { page: "speaking", label: "口语练习", icon: "mic" },
-  { page: "mock", label: "完整模考", icon: "file" },
-  { page: "review", label: "错题复习", icon: "repeat" }, { page: "profile", label: "学习画像", icon: "chart" },
-  { page: "settings", label: "设置", icon: "settings" },
+type NavTone = "accent" | "listening" | "reading" | "speaking" | "mock" | "review" | "neutral";
+type NavItem = { page: Page; label: string; icon: IconName; tone: NavTone };
+const todayNav: NavItem = { page: "home", label: "今日", icon: "home", tone: "accent" };
+const navGroups: Array<{ id: string; label: string; items: NavItem[] }> = [
+  { id: "practice", label: "练习", items: [
+    { page: "listening", label: "听力", icon: "headphones", tone: "listening" },
+    { page: "reading", label: "阅读", icon: "book", tone: "reading" },
+    { page: "speaking", label: "口语", icon: "mic", tone: "speaking" },
+    { page: "mock", label: "模考", icon: "file", tone: "mock" },
+    { page: "review", label: "复习", icon: "repeat", tone: "review" },
+  ] },
+  { id: "mine", label: "我的", items: [
+    { page: "profile", label: "画像", icon: "chart", tone: "neutral" },
+    { page: "settings", label: "设置", icon: "settings", tone: "neutral" },
+  ] },
 ];
 const sectionLabel: Record<Section, string> = { listening: "听力", reading: "阅读", vocabulary: "词汇" };
 const difficultyLabel: Record<1 | 2 | 3, string> = { 1: "基础", 2: "进阶", 3: "挑战" };
@@ -42,13 +51,18 @@ const percent = (value: number, total: number) => total ? Math.round(value / tot
 const monthDay = (date: string) => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date(date + "T12:00:00"));
 const themeKey = "ielts-theme";
 type ThemeMode = "system" | "light" | "dark";
-const themeOptions: Array<{ value: ThemeMode; label: string }> = [{ value: "system", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" }];
+const themeOptions: Array<{ value: ThemeMode; label: string; icon: IconName }> = [
+  { value: "system", label: "跟随系统", icon: "monitor" },
+  { value: "light", label: "浅色", icon: "sun" },
+  { value: "dark", label: "深色", icon: "moon" },
+];
+const isDarkTheme = (mode: ThemeMode) => mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 /* 与 index.html 的防闪烁脚本保持同一解析算法，两处需同步修改 */
 const applyTheme = (mode: ThemeMode) => {
-  const dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const dark = isDarkTheme(mode);
   if (dark) document.documentElement.dataset.theme = "dark";
   else delete document.documentElement.dataset.theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0b0b0b" : "#ffffff");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0a0d13" : "#eaeef6");
 };
 
 /* ===== hash 路由 =====
@@ -82,10 +96,15 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [bootToken, setBootToken] = useState(0);
   const [exitPromptToken, setExitPromptToken] = useState(0);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(themeKey);
     return stored === "light" || stored === "dark" ? stored : "system";
   });
+  const [resolvedDark, setResolvedDark] = useState<boolean>(() => isDarkTheme((() => {
+    const stored = localStorage.getItem(themeKey);
+    return stored === "light" || stored === "dark" ? stored : "system";
+  })()));
   const loaded = useRef(false);
   const performing = useRef(false);
   const coachSending = useRef(false);
@@ -137,12 +156,21 @@ export function App() {
   /* 主题解析：只在偏好或系统配色真实变化时重导出，与首帧内联脚本同算法（幂等）。 */
   useEffect(() => {
     applyTheme(themeMode);
+    setResolvedDark(isDarkTheme(themeMode));
     if (themeMode !== "system") return;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onSchemeChange = () => applyTheme("system");
+    const onSchemeChange = () => {
+      applyTheme("system");
+      setResolvedDark(isDarkTheme("system"));
+    };
     media.addEventListener("change", onSchemeChange);
     return () => media.removeEventListener("change", onSchemeChange);
   }, [themeMode]);
+
+  const selectTheme = useCallback((mode: ThemeMode) => {
+    setThemeMode(mode);
+    localStorage.setItem(themeKey, mode);
+  }, []);
 
   const pageRef = useRef(page); pageRef.current = page;
   const sessionRef = useRef(session); sessionRef.current = session;
@@ -236,6 +264,13 @@ export function App() {
     const timer = window.setTimeout(() => setToast(""), 3500);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    const update = () => setShowScrollTop(page !== "workspace" && page !== "preparation" && window.scrollY > 360);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, [page]);
 
   const perform = useCallback(async <T,>(action: () => Promise<T>, done?: (value: T) => void) => {
     if (performing.current) return undefined;
@@ -405,22 +440,43 @@ export function App() {
 
   return <div className={"app-frame" + (coachOpen ? " coach-open" : "") + (railHidden ? " rail-hidden" : "") + ((page === "workspace" && session) || page === "preparation" ? " exam-active" : "")}>
     <aside className="side-rail">
-      <button className="rail-collapse" type="button" aria-label="收起侧边栏" title="收起侧边栏" onClick={toggleRail}><Icon name="caret" size={16} /></button>
-      <div className="brand"><span className="brand-name">暖学</span><span className="brand-domain">IELTS · Study Studio</span></div>
-      <nav className="nav-list" aria-label="主要导航">{navItems.slice(0, 6).map((item) => <NavButton key={item.page} item={item} index={navItems.indexOf(item) + 1} active={page === item.page} onClick={() => { navigate(item.page); setCoachOpen(false); }} />)}</nav>
-      <div className="nav-spacer" /><div className="nav-divider" />
-      <nav className="nav-list" aria-label="学习记录与设置">{navItems.slice(6).map((item) => <NavButton key={item.page} item={item} index={navItems.indexOf(item) + 1} active={page === item.page} onClick={() => { navigate(item.page); setCoachOpen(false); }} />)}</nav>
-      <div className="local-note"><Icon name="lock" size={14} /><span>学习记录已保护</span></div>
+      <div className="rail-head">
+        <div className="brand">
+          <span className="brand-emblem" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6.5C4 5.1 5.1 4 6.5 4H11a2 2 0 0 1 2 2v13.5a1.5 1.5 0 0 0-1.5-1.5H6.5A2.5 2.5 0 0 0 4 20.5z" />
+              <path d="M20 6.5C20 5.1 18.9 4 17.5 4H13a2 2 0 0 0-2 2v13.5a1.5 1.5 0 0 1 1.5-1.5h5a2.5 2.5 0 0 1 2.5 2.5z" />
+            </svg>
+          </span>
+          <span className="brand-name">不学雅思</span>
+        </div>
+        <button className="rail-collapse" type="button" aria-label="收起侧边栏" title="收起侧边栏" onClick={toggleRail}><Icon name="panel-left" size={17} /></button>
+      </div>
+      <nav className="nav-list nav-primary" aria-label="今日学习">
+        <NavButton item={todayNav} active={page === "home"} badge={todayTasks.length ? `${todayTasks.filter((task) => task.status === "done").length}/${todayTasks.length}` : undefined} onClick={() => { navigate("home"); setCoachOpen(false); }} />
+      </nav>
+      {navGroups.map((group) => <div className="nav-group" key={group.id}>
+        <p className="nav-group-label" id={"nav-group-" + group.id}>{group.label}</p>
+        <nav className="nav-list" aria-labelledby={"nav-group-" + group.id}>
+          {group.items.map((item) => <NavButton key={item.page} item={item} active={page === item.page} badge={item.page === "review" && data.dueReviews > 0 ? (data.dueReviews > 9 ? "9+" : String(data.dueReviews)) : undefined} onClick={() => { navigate(item.page); setCoachOpen(false); }} />)}
+        </nav>
+      </div>)}
+      <div className="rail-account">
+        <span className="rail-avatar" aria-hidden="true">演</span>
+        <span className="rail-account-copy"><strong>演示</strong></span>
+        <button className="rail-theme" type="button" aria-label={resolvedDark ? "切换到浅色外观" : "切换到深色外观"} title={resolvedDark ? "切换到浅色外观" : "切换到深色外观"} onClick={() => selectTheme(resolvedDark ? "light" : "dark")}><Icon name={resolvedDark ? "sun" : "moon"} size={15} /></button>
+        <button className="rail-logout" type="button" aria-label="退出登录" title="退出登录" onClick={() => void logout()}><Icon name="logout" size={15} /></button>
+      </div>
     </aside>
     <main className="page-main" key={page}>
       {railHidden && <div className="rail-toolbar"><button className="rail-expand" type="button" aria-label="展开侧边栏" title="展开侧边栏" onClick={toggleRail}><Icon name="menu" size={18} /></button></div>}
-      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={navigate} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), applyData)} onSetup={() => navigate("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
+      {page === "home" && <HomePage data={data} today={today} tasks={todayTasks} onPage={navigate} onTask={startTask} onActivity={(id) => void startActivity(id)} onLock={(task) => void perform(() => api.updatePlan(task.id, { locked: !task.locked }), (updated) => { applyData(updated); setToast(task.locked ? "已解除任务锁定，重新规划时可调整。" : "已锁定任务，重新规划时会保留。"); })} onAttempt={(id) => void openAttempt(id)} pendingAttempt={pendingAttempt} onSetup={() => navigate("settings")} busy={busy} onConfirmProposal={confirmPlanProposal} onDismissProposal={dismissPlanProposal} onRetryProposal={retryPlanProposal} />}
       {(page === "reading" || page === "listening") && <LibraryPage section={page} data={data} onStart={(id) => void startActivity(id)} />}
       {page === "speaking" && <SpeakingPage />}
       {page === "mock" && <MockPage data={data} onStart={(section) => void startMock(section)} busy={busy} />}
       {page === "review" && <ReviewPage data={data} onStart={(id, ids) => void startActivity(id, "review", undefined, ids)} />}
       {page === "profile" && <ProfilePage data={data} onAttempt={(id) => void openAttempt(id)} busy={busy} pendingAttempt={pendingAttempt} />}
-      {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} themeMode={themeMode} onThemeChange={(mode) => { setThemeMode(mode); localStorage.setItem(themeKey, mode); }} />}
+      {page === "settings" && <SettingsPage data={data} busy={busy} error={error} onSave={saveProfile} onLogout={() => void logout()} themeMode={themeMode} onThemeChange={selectTheme} />}
       {page === "preparation" && preparation && <ExamPreparation key={preparation.activity.id} preparation={preparation} busy={busy} onBack={() => { setPreparation(undefined); navigate(workspaceReturnPage); setError(""); }} onStart={launchPreparation} />}
       {page === "workspace" && session && <WorkspacePage session={session} plugin={data.plugins.find((item) => item.section === session.activity.pluginId)} skillLabels={data.skillLabels} busy={busy} submitting={submitting} error={error} onBack={goHome} onAnswer={(answers) => setSession((current) => current ? { ...current, draft: { ...current.draft, answers } } : current)} onQuestion={setQuestionId} onSubmit={submit} onCoach={() => { setCoachOpen(true); void loadHistory(); }} onCause={(qid, tag, cause) => confirmCause(session.draft.attemptId, qid, tag, cause)} onAudioInterrupted={(reason) => { if (session.draft.mode === "mock") setSession((current) => current ? { ...current, draft: { ...current.draft, interruption: reason } } : current); }} exitPromptToken={exitPromptToken} />}
     </main>
@@ -428,18 +484,34 @@ export function App() {
     {coachOpen && session && currentQuestion && <CoachDrawer activity={session.activity} question={currentQuestion} draft={session.draft} result={session.result} data={data} lines={coachLines} loading={coachLoading} error={coachError} failedMessage={failedMessage} onClose={() => setCoachOpen(false)} onSend={sendCoach} onRetry={() => failedMessage && void sendCoach(failedMessage)} />}
     {error && <div className="toast-region" aria-live="polite"><div className="toast" role="alert"><Icon name="close" size={16} />{error}<button className="button button-outline button-small" disabled={busy} onClick={() => void perform(() => api.bootstrap(), applyData)}>核对状态</button><button className="icon-button" aria-label="关闭提示" onClick={() => setError("")}><Icon name="close" size={15} /></button></div></div>}
     {!error && toast && <div className="toast-region" aria-live="polite"><div className="toast" role="status"><Icon name="sparkle" size={16} />{toast}</div></div>}
+    {showScrollTop && !coachOpen && page !== "workspace" && page !== "preparation" && (
+      <button
+        type="button"
+        className={"scroll-top-button" + (error || toast ? " has-toast" : "")}
+        aria-label="回到顶部"
+        title="回到顶部"
+        onClick={() => window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}
+      >
+        <Icon name="arrow-up" size={15} />
+        <span>回到顶部</span>
+      </button>
+    )}
   </div>;
 }
 
-function NavButton({ item, active, onClick, index }: { item: { page: Page; label: string; icon: IconName }; active: boolean; onClick: () => void; index: number }) {
-  return <button className={"nav-button" + (active ? " active" : "")} aria-label={item.label} title={item.label} onClick={onClick} aria-current={active ? "page" : undefined}><span className="nav-index" aria-hidden="true">{String(index).padStart(2, "0")}</span><Icon name={item.icon} /><span className="nav-copy">{item.label}</span></button>;
+function NavButton({ item, active, onClick, badge }: { item: NavItem; active: boolean; onClick: () => void; badge?: string }) {
+  return <button className={"nav-button" + (active ? " active" : "")} data-tone={item.tone} aria-label={item.label} title={item.label} onClick={onClick} aria-current={active ? "page" : undefined}>
+    <span className="nav-tile" aria-hidden="true"><Icon name={item.icon} size={16} /></span>
+    <span className="nav-copy">{item.label}</span>
+    {badge && <span className={"nav-badge " + (item.page === "home" ? "nav-badge-progress" : "nav-badge-count")}>{badge}</span>}
+  </button>;
 }
 function PageHeader({ title, eyebrow, subtitle, actions }: { title: string; eyebrow?: string; subtitle?: string; actions?: ReactNode }) {
-  return <header className="page-title-row"><div>{eyebrow && <p className="page-eyebrow">{eyebrow}</p>}<h1>{title}</h1>{subtitle && <p className="page-subtitle">{subtitle}</p>}</div>{actions && <div className="page-actions">{actions}</div>}</header>;
+  return <header className="page-title-row"><div>{eyebrow && <p className="page-eyebrow" lang="en" translate="no">{eyebrow}</p>}<h1>{title}</h1>{subtitle && <p className="page-subtitle">{subtitle}</p>}</div>{actions && <div className="page-actions">{actions}</div>}</header>;
 }
-function HomePage({ data, today, tasks, onPage, onTask, onActivity, onLock, onSetup, busy, onConfirmProposal, onDismissProposal, onRetryProposal }: {
+function HomePage({ data, today, tasks, onPage, onTask, onActivity, onLock, onAttempt, pendingAttempt, onSetup, busy, onConfirmProposal, onDismissProposal, onRetryProposal }: {
   data: BootstrapData; today: string; tasks: PlanTask[]; onPage: (page: Page) => void; onTask: (task: PlanTask) => void; onActivity: (id: string) => void;
-  onLock: (task: PlanTask) => void; onSetup: () => void; busy: boolean;
+  onLock: (task: PlanTask) => void; onAttempt: (id: string) => void; pendingAttempt: string; onSetup: () => void; busy: boolean;
   onConfirmProposal: (id: string) => void; onDismissProposal: (id: string) => void; onRetryProposal: () => void;
 }) {
   const complete = tasks.filter((task) => task.status === "done").length;
@@ -467,7 +539,22 @@ function HomePage({ data, today, tasks, onPage, onTask, onActivity, onLock, onSe
         </div>
       </div>
       <div className="hero-progress">
-        <div className="hero-ring" style={{ "--p": donePercent } as React.CSSProperties}><strong>{donePercent}%</strong></div>
+        <div className="hero-ring">
+          <svg viewBox="0 0 96 96" aria-hidden="true">
+            <circle className="hero-ring-track" cx="48" cy="48" r="41" />
+            <circle
+              className="hero-ring-value"
+              cx="48"
+              cy="48"
+              r="41"
+              pathLength={100}
+              strokeDasharray="100"
+              strokeDashoffset={100 - donePercent}
+              strokeOpacity={donePercent > 0 ? 1 : 0}
+            />
+          </svg>
+          <strong>{donePercent}%</strong>
+        </div>
         <small>{complete} / {planned} 已完成</small>
       </div>
     </section>
@@ -481,7 +568,7 @@ function HomePage({ data, today, tasks, onPage, onTask, onActivity, onLock, onSe
       <div className="empty-callout"><Icon name="sparkle" /><div className="empty-callout-copy"><strong>{emptyTitle}</strong><p>{emptyNote}</p></div><div className="empty-callout-actions"><button className="button button-outline button-small" onClick={() => onPage("reading")}>去题库选题 <Icon name="arrow" size={14} /></button></div></div>}</div>
     <div className="home-lower">
       <section className="home-lower-block"><h2>最近的听读记录</h2>
-        {data.attempts.length ? <div className="attempt-list">{data.attempts.slice(0, 3).map((item) => <div className="attempt-row" key={item.attemptId}><span className={"icon-tile sm tone-" + (item.pluginId === "reading" ? "reading" : "listening")}><Icon name={item.pluginId === "reading" ? "book" : "headphones"} size={15} /></span><span className="attempt-date">{new Date(item.submittedAt).toLocaleDateString("zh-CN")}</span><span>{sectionLabel[item.pluginId]}</span><strong className="attempt-result">{item.score} / {item.total}</strong></div>)}</div> : <div className="empty-state compact-empty"><Icon name="chart" /><h2>完成第一次练习后，这里会留下记录</h2><p>画像会逐步累积新题表现，不只看一次分数。累计 {answered}/{total}。</p></div>}
+        {data.attempts.length ? <div className="attempt-list">{data.attempts.slice(0, 3).map((item) => <div className="attempt-row" key={item.attemptId}><span className={"icon-tile sm tone-" + (item.pluginId === "reading" ? "reading" : "listening")}><Icon name={item.pluginId === "reading" ? "book" : "headphones"} size={15} /></span><span className="attempt-date">{new Date(item.submittedAt).toLocaleDateString("zh-CN")}</span><span>{sectionLabel[item.pluginId]} · {item.mode === "mock" ? "完整模考" : item.mode === "review" ? "错题复习" : "专项练习"}</span><strong className="attempt-result">{item.score} / {item.total}</strong><button type="button" className="text-action" onClick={() => onAttempt(item.attemptId)} disabled={busy}>{pendingAttempt === item.attemptId ? "打开中…" : "查看复盘"}</button></div>)}</div> : <div className="empty-state compact-empty"><Icon name="chart" /><h2>完成第一次练习后，这里会留下记录</h2><p>画像会逐步累积新题表现，不只看一次分数。累计 {answered}/{total}。</p></div>}
       </section>
     </div>
       </div>
@@ -533,7 +620,8 @@ function ProposalSchedule({ proposal, currentPlan, today, dailyMinutes, skillLab
 }
 function TaskRow({ task, index, onStart, onLock, busy, skillLabels }: { task: PlanTask; index: number; onStart: () => void; onLock: () => void; busy: boolean; skillLabels: Record<string, string> }) {
   const date = new Date(task.date + "T12:00:00").toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-  return <article className={"task-row" + (index === 0 && task.status !== "done" ? " featured" : "")}><span className="task-index">{String(index + 1).padStart(2, "0")}</span><div className="task-copy"><strong>{task.title}</strong><p>{task.reason}</p><span className="task-focus">{task.questionIds?.length ?? 0} 道题{task.questionKind ? " · " + (task.questionKind === "choice" ? "选择题" : task.questionKind === "tfng" ? "判断题" : "填空题") : ""}{task.focusSkillTag ? " · " + skillName(skillLabels, task.focusSkillTag) : ""}</span></div><span className="task-time">{date} · {task.minutes} 分钟</span><div className="task-controls">{task.status === "done" ? <span className="completion-status"><Icon name="circle-check" size={14} />已完成</span> : <><button className="task-lock" title={task.locked ? "解除锁定" : "锁定任务"} aria-label={task.locked ? "解除锁定" : "锁定任务"} onClick={onLock} disabled={busy}><Icon name={task.locked ? "lock" : "unlock"} size={16} /></button><button className={"button " + (index === 0 ? "button-primary" : "button-outline") + " button-small"} onClick={onStart} disabled={busy}>{task.kind === "review" ? "开始复习" : "开始练习"} <Icon name="arrow" size={14} /></button></>}</div></article>;
+  const featured = index === 0 && task.status !== "done";
+  return <article className={"task-row" + (featured ? " featured" : "")}><span className="task-index">{String(index + 1).padStart(2, "0")}</span><div className="task-copy"><strong>{task.title}{featured && <span className="task-next-badge">下一步</span>}</strong><p>{task.reason}</p><span className="task-focus">{task.questionIds?.length ?? 0} 道题{task.questionKind ? " · " + (task.questionKind === "choice" ? "选择题" : task.questionKind === "tfng" ? "判断题" : "填空题") : ""}{task.focusSkillTag ? " · " + skillName(skillLabels, task.focusSkillTag) : ""}</span></div><span className="task-time">{date} · {task.minutes} 分钟</span><div className="task-controls">{task.status === "done" ? <span className="completion-status"><Icon name="circle-check" size={14} />已完成</span> : <><button className={"task-lock" + (task.locked ? " is-locked" : "")} title={task.locked ? "已锁定（点击解除）" : "锁定任务"} aria-label={task.locked ? "解除锁定" : "锁定任务"} aria-pressed={task.locked} onClick={onLock} disabled={busy}><Icon name={task.locked ? "lock" : "unlock"} size={16} /></button><button className={"button " + (index === 0 ? "button-primary" : "button-outline") + " button-small"} onClick={onStart} disabled={busy}>{task.kind === "review" ? "开始复习" : "开始练习"} <Icon name="arrow" size={14} /></button></>}</div></article>;
 }
 function MockPage({ data, onStart, busy }: { data: BootstrapData; onStart: (section: "reading" | "listening") => void; busy: boolean }) {
   return <div className="page-content"><PageHeader eyebrow="Mock test" title="完整模考" subtitle="从现有题库组合完整试卷，按真实机考方式练习。听力与学术阅读分别进行。" />
@@ -549,6 +637,7 @@ function ReviewPage({ data, onStart }: { data: BootstrapData; onStart: (activity
 }
 function LibraryPage({ section, data, onStart }: { section: "reading" | "listening"; data: BootstrapData; onStart: (id: string) => void }) {
   const activities = useMemo(() => data.activities.filter((item) => item.pluginId === section), [data.activities, section]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<0 | 1 | 2 | 3>(0);
   const [part, setPart] = useState<0 | 1 | 2 | 3 | 4>(0);
@@ -574,26 +663,38 @@ function LibraryPage({ section, data, onStart }: { section: "reading" | "listeni
   const title = section === "reading" ? "阅读练习" : "听力练习";
   const description = section === "reading" ? "从短篇文章开始，练习定位证据、识别改写和判断题逻辑。" : "听一段材料，再从日期、地点和具体细节里寻找答案。";
   return <div className="page-content">
-    <PageHeader eyebrow={section === "reading" ? "Reading" : "Listening"} title={title} subtitle={description} />
+    <PageHeader eyebrow={section === "reading" ? "Reading · Library" : "Listening · Library"} title={title} subtitle={description} />
     <div className="library-page">
       <div className="library-toolbar">
-        <label className="search-field"><Icon name="search" size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索练习标题或关键词" aria-label="搜索练习" /></label>
+        <label className="search-field">
+          <Icon name="search" size={17} />
+          <input ref={searchInputRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索练习标题或关键词" aria-label="搜索练习" />
+          {query && <button type="button" className="search-clear" aria-label="清空搜索" title="清空搜索" onClick={() => { setQuery(""); searchInputRef.current?.focus(); }}><Icon name="close" size={13} /></button>}
+        </label>
         <span className="library-count">{filtered.length} 份练习</span>
+        {filtering && <div className="active-filters" aria-label="当前筛选条件">
+          {part !== 0 && <button type="button" className="filter-chip" onClick={() => setPart(0)}><span>分段：{partLabel[section][part]}</span><Icon name="close" size={12} /></button>}
+          {level !== 0 && <button type="button" className="filter-chip" onClick={() => setLevel(0)}><span>难度：{difficultyLabel[level]}</span><Icon name="close" size={12} /></button>}
+          {query.trim() !== "" && <button type="button" className="filter-chip" onClick={() => setQuery("")}><span>搜索：{query.trim()}</span><Icon name="close" size={12} /></button>}
+          <button type="button" className="text-action" onClick={() => { setPart(0); setLevel(0); setQuery(""); }}>全部清除</button>
+        </div>}
       </div>
       <aside className="library-side">
-        <section className="side-card">
-          <h3>分段</h3>
-          <ul className="filter-list" role="group" aria-label="按考试分段筛选">
-            <li><button aria-pressed={part === 0} onClick={() => setPart(0)}>全部<span>{activities.length}</span></button></li>
-            {partOptions(section).map((value) => <li key={value}><button aria-pressed={part === value} onClick={() => setPart(value)}>{partLabel[section][value]}<span>{partCounts.get(value) ?? 0}</span></button></li>)}
-          </ul>
-        </section>
-        <section className="side-card">
-          <h3>难度</h3>
-          <ul className="filter-list" role="group" aria-label="按难度筛选">
-            <li><button aria-pressed={level === 0} onClick={() => setLevel(0)}>全部<span>{activities.length}</span></button></li>
-            {([1, 2, 3] as const).filter((value) => (levelCounts.get(value) ?? 0) > 0).map((value) => <li key={value}><button aria-pressed={level === value} onClick={() => setLevel(value)}>{difficultyLabel[value]}<span>{levelCounts.get(value) ?? 0}</span></button></li>)}
-          </ul>
+        <section className="side-card library-filter-card">
+          <div className="filter-group">
+            <h3>分段</h3>
+            <ul className="filter-list" role="group" aria-label="按考试分段筛选">
+              <li><button aria-pressed={part === 0} onClick={() => setPart(0)}>全部<span>{activities.length}</span></button></li>
+              {partOptions(section).map((value) => <li key={value}><button aria-pressed={part === value} onClick={() => setPart(value)}>{partLabel[section][value]}<span>{partCounts.get(value) ?? 0}</span></button></li>)}
+            </ul>
+          </div>
+          <div className="filter-group">
+            <h3>难度</h3>
+            <ul className="filter-list" role="group" aria-label="按难度筛选">
+              <li><button aria-pressed={level === 0} onClick={() => setLevel(0)}>全部<span>{activities.length}</span></button></li>
+              {([1, 2, 3] as const).filter((value) => (levelCounts.get(value) ?? 0) > 0).map((value) => <li key={value}><button aria-pressed={level === value} onClick={() => setLevel(value)}>{difficultyLabel[value]}<span>{levelCounts.get(value) ?? 0}</span></button></li>)}
+            </ul>
+          </div>
         </section>
         {filtering && <button className="text-action" onClick={() => { setPart(0); setLevel(0); setQuery(""); }}>清除筛选 <Icon name="close" size={13} /></button>}
       </aside>
@@ -640,7 +741,7 @@ function SettingsPage({ data, busy, error, onSave, onLogout, themeMode, onThemeC
   }, [data.profile]);
   return <div className="page-content"><PageHeader eyebrow="Settings" title="设置" subtitle="调整备考目标和每天的学习节奏。" />
     <section className="profile-form profile-edit"><div><h2>学习偏好</h2><p className="profile-note">这些设置会帮助我们安排适合你的练习时间。你可以随时调整。</p></div><ProfileForm value={form} busy={busy} saved={saved} error={error} onChange={(value) => updateForm({ type: "change", value })} onSubmit={(event) => { event.preventDefault(); if (!busy && !saved) void onSave({ ...form, setupComplete: true }).then((ok) => { if (ok) updateForm({ type: "saved", value: form }); }); }} /></section>
-    <section className="profile-form profile-edit"><div><h2>界面</h2><p className="profile-note">深色适合夜间刷题；考试界面始终与真实机考一致，保持浅色。</p></div><label className="field"><span>外观</span><select className="input" value={themeMode} onChange={(event) => onThemeChange(event.target.value as ThemeMode)}>{themeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></section>
+    <section className="profile-form profile-edit"><div><h2>界面</h2><p className="profile-note">深色适合夜间刷题；考试界面始终与真实机考一致，保持浅色。</p></div><div className="field"><span id="theme-group-label">外观</span><div className="segmented-control" style={{ "--seg-index": Math.max(0, themeOptions.findIndex((option) => option.value === themeMode)) } as CSSProperties} role="radiogroup" aria-labelledby="theme-group-label">{themeOptions.map((option) => { const selected = themeMode === option.value; return <button key={option.value} type="button" role="radio" aria-checked={selected} className={"segmented-option" + (selected ? " is-active" : "")} onClick={() => onThemeChange(option.value)}><Icon name={option.icon} size={14} /><span>{option.label}</span></button>; })}</div></div></section>
     <section className="profile-form profile-edit account-panel"><div><h2>演示账号</h2><p className="profile-note">所有使用演示密码登录的人会共用这一份学习记录。</p></div><button className="button button-soft" onClick={onLogout}>退出登录</button></section>
   </div>;
 }

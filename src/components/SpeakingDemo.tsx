@@ -88,7 +88,7 @@ function DemoPlayer({ part, topic, onExit, onReplay }: Props & { onReplay: () =>
   };
 
   return <section className="page-content speech-page">
-    <header className="page-title-row"><div><p className="page-eyebrow">Speaking · Demo</p><h1>{complete ? "示例复盘" : "口语演示"}</h1>
+    <header className="page-title-row"><div><p className="page-eyebrow" lang="en" translate="no">Speaking · Demo</p><h1>{complete ? "示例复盘" : "口语演示"}</h1>
       <p className="page-subtitle">本地示例 · 无需麦克风，演示结果不计入练习记录。</p></div></header>
     <audio ref={player} src={"/assets/speaking-demo/" + topic.demo + ".mp3"} preload="auto" muted={quiet} />
     {complete ? <>
@@ -100,9 +100,9 @@ function DemoPlayer({ part, topic, onExit, onReplay }: Props & { onReplay: () =>
         <button className="speech-link" onClick={onExit}>退出演示</button></div>
       <ol className="demo-stages">{["连接", part === 2 ? "个人陈述" : "问答", "复盘"].map((name, i) =>
         <li key={name} aria-current={i === stage ? "step" : undefined} className={i <= stage ? "reached" : ""}>{name}</li>)}</ol>
-      <div className="speech-signal" data-speaker={talking ? current.role : undefined}>
-        <div className="speech-wave" aria-hidden="true">{[.45,.75,1,.8,.5].map(weight =>
-          <i key={weight} style={{ transform: "scaleY(" + (.14 + level * weight) + ")" }} />)}</div>
+      <div className="speech-signal" data-active={talking ? "true" : undefined} data-speaker={talking ? current.role : undefined}>
+        <div className="speech-wave" aria-hidden="true">{[.28, .5, .78, .96, 1, .92, .72, .46, .25].map((weight, index) =>
+          <i key={index} style={{ transform: "scaleY(" + (.14 + level * weight) + ")" }} />)}</div>
         <span role="status">{paused ? "演示已暂停" : status}</span>
       </div>
       {preparing ? <div className="demo-caption"><strong>题卡 · 演示准备 {Math.ceil(turns[1].start - seconds)} 秒</strong>

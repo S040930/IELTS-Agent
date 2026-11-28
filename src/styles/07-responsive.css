@@ -6,7 +6,7 @@
 }
 
 @media (max-width: 1250px) {
-  :root { --rail: 208px; }
+  :root { --rail: 180px; }
   .page-content { padding-right: 28px; padding-left: 28px; }
   .app-frame.coach-open .page-main { margin-right: 352px; }
   .coach-drawer { width: 352px; }
@@ -22,10 +22,12 @@
 
 /* 表格列在中等宽度放不下：题库行改为两段式，元信息挤到标题下方一行 */
 @media (max-width: 1080px) {
-  /* 左栏筛选在中等宽度改为并排两张卡 */
+  /* 左栏单卡筛选在中等宽度内分两栏并排 */
   .library-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
   .library-toolbar, .library-side, .library-main { grid-row: auto; grid-column: 1; }
-  .library-side { position: static; grid-template-columns: repeat(2, minmax(0, 268px)); justify-content: start; }
+  .library-side { position: static; }
+  .library-filter-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+  .library-filter-card .filter-group + .filter-group { margin-top: 0; padding-top: 0; padding-left: 24px; border-top: 0; border-left: 1px solid var(--hairline); }
   .library-head { display: none; }
   .library-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 40px 12px 16px; }
   .library-body { flex: 1 1 240px; }
@@ -37,23 +39,33 @@
 }
 
 @media (max-width: 900px) {
-  :root { --rail: 76px; }
-  /* 窄屏侧栏只留图标 */
+  :root { --rail: 68px; }
+  /* 窄屏侧栏只留图标；组标题与品牌文字隐藏，待复习数收成小圆点 */
   .side-rail { align-items: center; padding: 12px 8px; }
-  .rail-collapse { position: static; margin: 0 auto 8px; }
-  .brand { grid-template-columns: 1fr; grid-template-rows: auto; justify-items: center; margin: 0 0 14px; padding: 0; }
-  .brand::before { grid-column: 1; grid-row: 1; width: 30px; height: 30px; font-size: 14px; }
-  .brand-name, .brand-domain { display: none; }
+  .rail-head { flex-direction: column-reverse; align-items: center; gap: 10px; width: 100%; margin: 0 0 12px; padding: 0 0 12px; }
+  .brand { flex: none; justify-content: center; padding: 0; }
+  .brand-emblem { width: 28px; height: 28px; }
+  .brand-emblem svg { width: 15px; height: 15px; }
+  .brand-name { display: none; }
+  .rail-collapse { margin: 0; }
+  .nav-primary { width: 100%; margin-bottom: 10px; }
+  .nav-group { width: 100%; }
+  .nav-group + .nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+  .nav-group-label { display: none; }
   .nav-list { width: 100%; }
-  .nav-button { grid-template-columns: 1fr; justify-items: center; min-height: 44px; padding: 0; }
+  .nav-button { grid-template-columns: 1fr; justify-items: center; min-height: 40px; padding: 0; }
+  .nav-tile { width: 26px; height: 26px; }
+  .nav-tile svg { width: 17px; height: 17px; }
   .nav-copy { display: none; }
-  .nav-button svg { width: 20px; height: 20px; }
-  .nav-divider { margin: 10px 6px; }
-  .local-note { display: none; }
+  .nav-badge-progress { display: none; }
+  .nav-badge-count { position: absolute; top: 8px; right: calc(50% - 18px); display: block; width: 6px; height: 6px; min-width: 0; padding: 0; overflow: hidden; border-radius: 50%; background: var(--tone-review); box-shadow: 0 0 0 2px var(--sidebar); color: transparent; font-size: 0; line-height: 0; }
+  .rail-account { flex-direction: column; justify-content: center; gap: 6px; width: 100%; padding: 12px 0 0; }
+  .rail-account-copy, .rail-logout { display: none; }
   .page-content { padding: 24px 22px 64px; }
   .hero-card { grid-template-columns: 1fr; }
   .hero-progress { grid-auto-flow: column; align-items: center; justify-self: start; gap: 12px; }
   .quick-links { grid-template-columns: 1fr; }
+  .quick-link + .quick-link { border-left: 0; border-top: 1px solid var(--hairline); }
   .data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cause-row { grid-template-columns: 1fr; gap: 12px; }
   .cause-fields { grid-template-columns: 1fr 1fr; }
@@ -88,13 +100,13 @@
 }
 
 @media (max-width: 600px) {
-  :root { --rail: 64px; }
+  :root { --rail: 58px; }
   .side-rail { padding: 10px 5px; }
-  .nav-button { min-height: 40px; }
+  .nav-button { min-height: 38px; }
   .page-content { padding: 20px 16px 72px; }
   .page-title-row { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 18px; }
-  .page-title-row h1 { font-size: 23px; }
-  .page-eyebrow { margin-bottom: 8px; }
+  .page-title-row h1 { font-size: 22px; }
+  .page-eyebrow { margin-bottom: 6px; }
   .page-subtitle { margin-top: 6px; font-size: 13px; }
   .page-actions { padding-bottom: 0; }
   .section-heading { margin-top: 20px; }
@@ -110,7 +122,9 @@
   .hero-card h2 { font-size: 18px; }
   .hero-ring { width: 68px; height: 68px; }
   .hero-ring strong { font-size: 16px; }
-  .quick-link { padding: 12px 14px; }
+  .segmented-control { width: 100%; }
+  .segmented-option { padding: 0 8px; font-size: 12px; }
+  .quick-link { padding: 13px 14px; }
   .data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-side { grid-template-columns: minmax(0, 1fr); }
   .plan-proposal { padding: 16px; }
@@ -120,6 +134,8 @@
   .proposal-day li > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .plan-proposal-actions .button { flex: 1 1 auto; }
   .library-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .library-filter-card { grid-template-columns: minmax(0, 1fr); }
+  .library-filter-card .filter-group + .filter-group { margin-top: 14px; padding-top: 14px; padding-left: 0; border-top: 1px solid var(--hairline); border-left: 0; }
   /* 列向排列时清除行内的 flex-basis，否则输入框会被拉到 280px 高 */
   .search-field { flex: 0 0 auto; width: 100%; max-width: none; }
   .library-row { padding: 12px 34px 12px 12px; }
@@ -144,6 +160,8 @@
   .cause-fields { grid-template-columns: 1fr; }
   .cause-fields .button { grid-column: auto; justify-self: start; }
   .toast-region { right: 12px; bottom: 16px; }
+  .scroll-top-button { right: 16px; bottom: 18px; }
+  .scroll-top-button.has-toast { bottom: 84px; }
   /* 机考面：触控目标放大 */
   .exam-bar { flex-wrap: wrap; row-gap: 7px; }
   .exam-bar-right { flex-wrap: wrap; row-gap: 6px; }

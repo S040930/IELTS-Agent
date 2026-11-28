@@ -1,5 +1,5 @@
 import "./speaking.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "../services/api.js";
 import { SpeakingCall, type CallPhase } from "../services/speaking-call.js";
 import { parts } from "../services/speaking-topics.js";
@@ -122,7 +122,7 @@ export function SpeakingPage() {
   const timed = phase === "preparing" || (part === 2 && phase === "speaking");
   if (demo) return <SpeakingDemo part={part} topic={topic} onExit={() => setDemo(false)} />;
   return <section className="page-content speech-page">
-    <header className="page-title-row"><div><p className="page-eyebrow">Speaking</p><h1>{record ? "口语复盘" : "口语练习"}</h1>
+    <header className="page-title-row"><div><p className="page-eyebrow" lang="en" translate="no">Speaking</p><h1>{record ? "口语复盘" : "口语练习"}</h1>
       <p className="page-subtitle">{record ? "回看这次练习和考官反馈。" : "与 AI 考官用英语对话，练完回看自己的表达。"}</p></div></header>
     <audio ref={audio} autoPlay />
     {error && <p className="speech-notice" role="alert">{error}</p>}
@@ -134,7 +134,7 @@ export function SpeakingPage() {
         {saving && <span role="status">正在保存…</span>}
       </div>
     </> : <>
-      {!phase && <div className="speech-segments" aria-label="口语考试分段">{([1, 2, 3] as const).map(value =>
+      {!phase && <div className="speech-segments" style={{ "--seg-index": part - 1 } as CSSProperties} aria-label="口语考试分段">{([1, 2, 3] as const).map(value =>
         <button key={value} aria-pressed={part === value} onClick={() => { setPart(value); setTopicIndex(0); }}>Part {value}<span>{parts[value].title}</span></button>)}</div>}
       <article className="speech-panel speech-studio">
         <div className="speech-heading"><div><p className="speech-meta">Part {part} · {parts[part].title}</p><h2>{topic.title}</h2></div>
@@ -149,8 +149,8 @@ export function SpeakingPage() {
           <button className={"button " + (configuration ? "button-primary" : "button-outline")} onClick={() => { selection.current++; setError(""); setDemo(true); }}><Icon name="play" size={16} />播放口语演示</button>
           {configuration && <span className="speech-config" role="status">{configuration} <button className="speech-link" onClick={() => setLoadAttempt(n => n + 1)}>重新检查</button></span>}</div>
         </> : <>
-          <div className="speech-signal"><div className="speech-wave" aria-hidden="true">
-            {[0.35, 0.65, 1, 0.8, 0.5].map(n => <i key={n} style={{ transform: "scaleY(" + (0.14 + level * n) + ")" }} />)}</div>
+          <div className="speech-signal" data-active={phase === "speaking" || phase === "preparing" ? "true" : undefined}><div className="speech-wave" aria-hidden="true">
+            {[0.28, 0.5, 0.78, 0.96, 1, 0.92, 0.72, 0.46, 0.25].map((n, index) => <i key={index} style={{ transform: "scaleY(" + (0.14 + level * n) + ")" }} />)}</div>
             <span role="status">{phase === "speaking" ? (muted ? "麦克风已静音" : status || phaseLabel[phase]) : phaseLabel[phase]}</span></div>
           <div className="speech-actions">
             {phase === "preparing" && <button className="button button-primary" onClick={() => void call.current?.beginSpeaking()}>提前开始陈述</button>}

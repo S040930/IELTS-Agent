@@ -1,11 +1,9 @@
 /* ===== ① 设计令牌 ===== */
-/* 清爽产品面：浅灰蓝画布 + 白色卡片 + 靛蓝主色；圆角 10 / 细边 / 轻投影。
-   明度分四层，避免整页糊成一片白：
-   画布（--page，最暗）< 卡片内凹槽（--surface-2）< 卡片（--surface，最亮），
-   另有一块靛蓝像素（hero / 到期复习卡）作为每页的视觉锚点。
-   考试作答面不消费这些值（见 05-exam 的冻结块）。 */
+/* 清爽浅灰蓝学习面：浅灰蓝画布 + 纯白浮面 + 深邃墨字 + 清亮靛蓝主色。
+   明度层级分明（--page < --surface-2 < --surface），同时保持温和低疲劳的视觉节奏；
+   考试作答面完全不消费这些值（见 05-exam 的冻结块）。 */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Inter, system-ui, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", Helvetica, Inter, system-ui, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color: var(--ink);
   background: var(--page);
   font-synthesis: none;
@@ -21,23 +19,26 @@
   --surface: #ffffff;
   --surface-2: #f3f5fa;
   --surface-3: #e5e9f2;
+  --surface-glass: rgba(255, 255, 255, .82);
   --sidebar: #ffffff;
-  --rail: 232px;
+  --rail: 196px;
 
-  /* 文字：五级灰度，标题与正文拉开 */
+  /* 文字：五级灰度，标题与正文清晰拉开 */
   --ink: #0f131c;
   --ink-soft: #2b3240;
   --subtle-ink: #414a5a;
   --muted: #5d6678;
 
-  /* 描边：卡片比发丝线深一档，画布变深后仍看得见边界 */
+  /* 描边：边界干净利落 */
   --line: #e0e5ef;
   --hairline: #edf0f7;
   --line-strong: #c4cbda;
   --rule: #0f131c;
   --border-input: #cfd6e3;
+  --specular-top: inset 0 1px 0 rgba(255, 255, 255, .92);
+  --specular-accent: inset 0 1px 0 rgba(255, 255, 255, .24);
 
-  /* 主色：靛蓝，wash 用于选中态，tint 用于面板 */
+  /* 主色：原版清亮靛蓝 */
   --accent: #4f46e5;
   --accent-hover: #4338ca;
   --accent-ink: #4338ca;
@@ -45,31 +46,35 @@
   --accent-soft: rgba(79, 70, 229, .12);
   --accent-wash: #e6e8fd;
   --accent-fill: #4f46e5;
+  --accent-fill-hover: #4338ca;
   --accent-tint: #eef1fe;
   --accent-line: #c5c4f7;
+  --on-tone: #ffffff;
   --highlight-surface: #f4f5ff;
   --selected-surface: #dfe2fc;
   --neutral-fill: #eceff6;
 
-  /* 品牌渐变：标志、完成环、节标题标记共用，是这套界面的识别点 */
+  /* 品牌识别与微光轨道 */
   --brand-from: #6366f1;
   --brand-via: #7c3aed;
   --brand-to: #2563eb;
   --gradient-brand: linear-gradient(135deg, #6366f1 0%, #7c3aed 52%, #2563eb 100%);
-  /* 面板渐变：面积大，去掉中间的紫调；比主色按钮淡一档，避免整块压过页面 */
   --gradient-panel: linear-gradient(150deg, #5854ee 0%, #4f46e5 58%, #2f5fe0 100%);
   --ring-track: rgba(79, 70, 229, .18);
-  --gradient-ring: conic-gradient(from -90deg, #6366f1 0%, #7c3aed calc(var(--p, 0) * .55%), #2563eb calc(var(--p, 0) * 1%), var(--ring-track) 0);
-
-  /* 画布光：左上角一层极淡靛蓝，给整页一点光源方向 */
   --canvas-glow: radial-gradient(1100px 520px at 12% -8%, rgba(99, 102, 241, .10), transparent 62%);
 
-  /* 英雄条：淡靛蓝面板，介于画布和白卡之间的一层中间调 */
+  /* 温和锚点柔面（浅靛柔纸面板，代替刺眼纯黑块） */
+  --panel-accent-bg: #eef1fe;
+  --panel-accent-bg-2: #e4e9fd;
+  --panel-accent-border: #c5c4f7;
+  --panel-accent-ink: #3730a3;
+
+  /* 英雄条：淡靛蓝空气感面板，介于画布和白卡之间 */
   --hero-from: #e9ecfe;
   --hero-via: #eef2fe;
   --hero-to: #e6efff;
 
-  /* 技能色：给图标块和标记上色，避免满屏灰 */
+  /* 技能辅色：清亮正色，点缀图标与标签 */
   --tone-listening: #1d4ed8;
   --tone-listening-tint: #e3edff;
   --tone-reading: #0b6b60;
@@ -96,16 +101,16 @@
   --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
+  --radius-lg: 15px;
+  --radius-xl: 20px;
   --radius-pill: 999px;
 
-  /* 阴影：卡片浮在灰画布上，投影要看得见；浮层更深 */
-  --shadow-xs: 0 1px 2px rgba(15, 19, 28, .06);
-  --shadow-sm: 0 1px 2px rgba(15, 19, 28, .05), 0 4px 12px -6px rgba(15, 19, 28, .14);
-  --shadow-md: 0 18px 40px -20px rgba(15, 19, 28, .30), 0 2px 8px rgba(15, 19, 28, .05);
-  --shadow-lg: 0 32px 64px -28px rgba(15, 19, 28, .34);
-  --shadow-drawer: -16px 0 48px -20px rgba(15, 19, 28, .22);
+  /* 阴影：卡片清晰浮于浅灰蓝画布之上 */
+  --shadow-xs: 0 1px 2px rgba(15, 19, 28, .05);
+  --shadow-sm: 0 1px 2px rgba(15, 19, 28, .045), 0 4px 12px -6px rgba(15, 19, 28, .12);
+  --shadow-md: 0 16px 38px -20px rgba(15, 19, 28, .22), 0 2px 8px rgba(15, 19, 28, .05);
+  --shadow-lg: 0 28px 56px -26px rgba(15, 19, 28, .26);
+  --shadow-drawer: -14px 0 42px -18px rgba(15, 19, 28, .18);
 
   /* 字阶 */
   --text-micro: 11px;
@@ -115,7 +120,7 @@
   --text-md: 16px;
   --text-lg: 20px;
   --text-xl: 26px;
-  --display: clamp(28px, 2.6vw, 36px);
+  --display: clamp(26px, 2.4vw, 33px);
 
   --leading-tight: 1.25;
   --leading-normal: 1.6;
@@ -134,17 +139,16 @@
   --space-2xl: 40px;
   --space-3xl: 64px;
 
-  /* 焦点环 */
-  --ring: 3px solid rgba(79, 70, 229, .35);
+  /* 焦点环与动效曲线 */
+  --ring: 3px solid rgba(79, 70, 229, .30);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Inter, system-ui, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", Helvetica, Inter, system-ui, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-serif: Georgia, "Times New Roman", "Songti SC", serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* ===== 深色（辅） =====
-   由 index.html 防闪烁脚本 / App 的 applyTheme 写 data-theme="dark" 激活。
-   覆盖全部可主题化令牌；不变量（--rail / --space-* / --radius-* / --text-* /
-   --leading-* / --font-mono）不重复声明。考试面在 05-exam 的冻结块中钉为浅色。 */
+/* ===== 深色（深邃夜空 + 清晰星白 + 月光靛蓝） ===== */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
@@ -152,6 +156,7 @@
   --surface: #151922;
   --surface-2: #1c212c;
   --surface-3: #252b38;
+  --surface-glass: rgba(21, 25, 34, .82);
   --sidebar: #151922;
 
   --ink: #f5f7fb;
@@ -164,6 +169,8 @@
   --line-strong: #3b4353;
   --rule: #f5f7fb;
   --border-input: #3b4353;
+  --specular-top: inset 0 1px 0 rgba(255, 255, 255, .08);
+  --specular-accent: inset 0 1px 0 rgba(255, 255, 255, .18);
 
   --accent: #8b95fb;
   --accent-hover: #a9b2ff;
@@ -172,8 +179,10 @@
   --accent-soft: rgba(139, 149, 251, .18);
   --accent-wash: #23264a;
   --accent-fill: #4f46e5;
+  --accent-fill-hover: #5b54ee;
   --accent-tint: #191d33;
   --accent-line: #3a3f78;
+  --on-tone: #ffffff;
   --highlight-surface: #1a1e30;
   --selected-surface: #2a2f52;
   --neutral-fill: #252b38;
@@ -181,6 +190,12 @@
   --gradient-panel: linear-gradient(150deg, #4f46e5 0%, #4338ca 58%, #2563eb 100%);
   --ring-track: rgba(139, 149, 251, .24);
   --canvas-glow: radial-gradient(1100px 520px at 12% -8%, rgba(99, 102, 241, .16), transparent 62%);
+
+  --panel-accent-bg: #181d34;
+  --panel-accent-bg-2: #1e2442;
+  --panel-accent-border: #3a3f78;
+  --panel-accent-ink: #eef0ff;
+
   --hero-from: #1c2040;
   --hero-via: #181c2e;
   --hero-to: #141d33;
@@ -208,10 +223,10 @@
   --skeleton-sweep: rgba(255, 255, 255, .05);
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, .45);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5), 0 4px 14px -8px rgba(0, 0, 0, .7);
-  --shadow-md: 0 18px 44px -22px rgba(0, 0, 0, .85), 0 2px 8px rgba(0, 0, 0, .4);
-  --shadow-lg: 0 32px 70px -30px rgba(0, 0, 0, .9);
-  --shadow-drawer: -16px 0 48px -20px rgba(0, 0, 0, .7);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .50), 0 4px 14px -8px rgba(0, 0, 0, .70);
+  --shadow-md: 0 18px 44px -22px rgba(0, 0, 0, .85), 0 2px 8px rgba(0, 0, 0, .40);
+  --shadow-lg: 0 32px 70px -30px rgba(0, 0, 0, .90);
+  --shadow-drawer: -16px 0 48px -20px rgba(0, 0, 0, .70);
 
   --ring: 3px solid rgba(139, 149, 251, .45);
 }

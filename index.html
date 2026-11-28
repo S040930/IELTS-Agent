@@ -10,12 +10,14 @@
         try { mode = localStorage.getItem("ielts-theme"); } catch (error) { mode = null; }
         var dark = mode === "dark" || ((mode === "system" || !mode) && matchMedia("(prefers-color-scheme: dark)").matches);
         if (dark) document.documentElement.dataset.theme = "dark";
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", dark ? "#0a0d13" : "#eaeef6");
       })();
     </script>
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#eaeef6" />
     <meta name="description" content="听力与阅读机考练习、实时 AI 口语和学习复盘。" />
-    <title>暖学 IELTS · 备考工作台</title>
+    <title>不学雅思 · 英语学习工作室</title>
   </head>
   <body>
     <div id="root"></div>
